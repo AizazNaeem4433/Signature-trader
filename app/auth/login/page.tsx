@@ -5,35 +5,41 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { MoveLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // <-- Import Image component
+import Image from "next/image"; 
 import { useRouter, useSearchParams } from "next/navigation"; 
+import { useTheme } from "next-themes";
 import EmailPasswordForm from "@/components/auth/EmailPasswordForm";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import { useAuthStore } from "@/lib/store/useAuthStore";
-import { useTheme } from "next-themes"; // <-- Import useTheme
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
 
 export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false);
   const { isLoggedIn, isInitialized } = useAuthStore(); 
   const router = useRouter();
   const searchParams = useSearchParams(); 
-  const { theme } = useTheme(); // <-- Get current theme
-  const [mounted, setMounted] = useState(false); // <-- State for theme mounting fix
+  const { theme } = useTheme(); 
+  const [mounted, setMounted] = useState(false); 
   
   const toggleMode = () => setIsSignUp(!isSignUp);
 
   const redirectPath = searchParams.get('redirect') || '/'; 
 
   useEffect(() => {
-    setMounted(true); // Set mounted state
-    // Redirect only AFTER the global state has finished fetching the user's role/status.
+    setMounted(true);
+    // Redirect logic relies on isInitialized
     if (isInitialized && isLoggedIn) {
         router.push(redirectPath); 
     }
-    // No need for a local onAuthStateChanged listener here; the Navbar handles global syncing.
+    // We keep the onAuthStateChanged in Navbar, but here's a defensive setup:
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        useAuthStore.getState().setAuthUser(user);
+    });
+    return () => unsubscribe();
   }, [isInitialized, isLoggedIn, router, redirectPath]);
 
-  // Determine logo source based on theme
   const logoSrc = mounted && theme === "dark" ? "/signature-logo-white.png" : "/signature-logo.png";
 
 
@@ -67,7 +73,7 @@ export default function AuthPage() {
           </Link>
         </div>
 
-        {/* LOGO SECTION - ADDED HERE */}
+        {/* LOGO SECTION */}
         <div className="flex justify-center -mt-4 mb-4">
             {mounted && (
                 <Image
@@ -85,8 +91,11 @@ export default function AuthPage() {
           <p className="text-muted-foreground mt-2">{subtitle}</p>
         </div>
 
-        {/* Google Sign-in */}
-        <GoogleSignInButton redirectPath={redirectPath} /> 
+        {/* Google Sign-in/Sign-up Button */}
+        <GoogleSignInButton 
+            redirectPath={redirectPath} 
+            isSignUpMode={isSignUp} // <-- PASS THE CURRENT MODE
+        /> 
 
         <div className="relative flex items-center">
           <div className="grow border-t border-border" />

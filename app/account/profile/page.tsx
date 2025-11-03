@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase"; 
+import { auth, db } from "@/lib/firebase";
 import { updateProfile } from "firebase/auth";
-import { doc, getDoc, setDoc } from 'firebase/firestore'; 
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ export default function ProfilePage() {
   const [displayName, setDisplayName] = useState(authUser?.displayName || "");
   const [photoURL, setPhotoURL] = useState(authUser?.photoURL || "");
   const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState(""); 
+  const [address, setAddress] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
 
   // --- 1. Fetch Non-Auth Details (Phone/Address) on Load ---
@@ -39,12 +39,12 @@ export default function ProfilePage() {
         const fetchFirestoreDetails = async () => {
             const userRef = doc(db, 'users', authUser.uid);
             const userSnap = await getDoc(userRef);
-            
+
             if (userSnap.exists()) {
                 const data = userSnap.data() as LocalProfileDetails;
                 // Update local state with data from Firestore
-                setPhone(data.phone || ''); 
-                setAddress(data.address || ''); 
+                setPhone(data.phone || '');
+                setAddress(data.address || '');
             }
         };
         fetchFirestoreDetails();
@@ -64,7 +64,7 @@ export default function ProfilePage() {
         displayName: displayName.trim(),
         photoURL: photoURL.trim(),
       });
-      
+
       // B. Update Firestore Document (Phone and Address)
       const userRef = doc(db, 'users', authUser.uid);
       await setDoc(userRef, {
@@ -72,14 +72,14 @@ export default function ProfilePage() {
         address: address.trim(),
         // NOTE: Preserve existing fields like role and email if you use merge: true
       }, { merge: true });
-      
+
       // Since the Auth update completes quickly, we notify the user.
       notify("Profile details updated successfully!", "success");
 
       // OPTIONAL: Manually re-trigger global state sync to refresh Auth data instantly
       // (The onAuthStateChanged listener handles this, but forcing it can be faster)
       await authUser.reload();
-      
+
     } catch (error) {
       console.error("Profile Update Error:", error);
       notify("Failed to update profile. Please try again.", "error");
@@ -100,97 +100,97 @@ export default function ProfilePage() {
 
   return (
     <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="space-y-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      // ADDED: max-w-2xl and mx-auto for better responsiveness on large screens
+      className="space-y-6 max-w-2xl mx-auto p-4 sm:p-6" 
     >
-        <h2 className="text-3xl font-bold mb-4 text-[#FFCE00]">Profile</h2>
-        
-        {/* Avatar Display (Using authUser for up-to-date name/photo) */}
-        <div className="flex justify-center mb-8">
-            <div className="relative w-24 h-24">
-                <img
-                    src={authUser?.photoURL || "/default-avatar.png"}
-                    alt="Profile Avatar"
-                    className="w-full h-full rounded-full object-cover border-4 border-[#FFCE00]"
-                />
-            </div>
+      <h2 className="text-3xl font-bold mb-6 text-[#FFCE00] text-center sm:text-left">Profile Settings ✨</h2>
+
+      {/* Avatar Display (Using authUser for up-to-date name/photo) */}
+      <div className="flex justify-center mb-8">
+        <div className="relative w-28 h-28 sm:w-32 sm:h-32"> {/* Slightly increased size */}
+          <img
+            src={authUser?.photoURL || "/default-avatar.png"}
+            alt="Profile Avatar"
+            className="w-full h-full rounded-full object-cover border-4 border-[#FFCE00] shadow-lg"
+          />
+        </div>
+      </div>
+
+      {/* Profile Update Form */}
+      <form onSubmit={handleUpdateProfile} className="space-y-6">
+        {/* Row 1: Name and Phone (side-by-side on md, stacked on small) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <Label htmlFor="displayName" className="flex items-center gap-2 mb-2 font-medium">
+              <UserIcon className="w-4 h-4 text-[#FFCE00]" /> Name
+            </Label>
+            <Input
+              id="displayName"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Enter your name"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="phone" className="flex items-center gap-2 mb-2 font-medium">
+              <Phone className="w-4 h-4 text-[#FFCE00]" /> Phone
+            </Label>
+            <Input
+              id="phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Enter your phone number"
+            />
+          </div>
         </div>
 
-        {/* Profile Update Form */}
-        <form onSubmit={handleUpdateProfile} className="space-y-6">
-            
-            {/* Row 1: Name and Phone (side-by-side) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <Label htmlFor="displayName" className="flex items-center gap-2 mb-2">
-                        <UserIcon className="w-4 h-4" /> Name
-                    </Label>
-                    <Input
-                        id="displayName"
-                        type="text"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder="Enter your name"
-                        required
-                    />
-                </div>
-                <div>
-                    <Label htmlFor="phone" className="flex items-center gap-2 mb-2">
-                        <Phone className="w-4 h-4" /> Phone
-                    </Label>
-                    <Input
-                        id="phone"
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="Enter your phone number"
-                    />
-                </div>
-            </div>
+        {/* Row 2: Address (full width) */}
+        <div>
+          <Label htmlFor="address" className="flex items-center gap-2 mb-2 font-medium">
+            <MapPin className="w-4 h-4 text-[#FFCE00]" /> Address
+          </Label>
+          <Input
+            id="address"
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Enter your address"
+          />
+        </div>
 
-            {/* Row 2: Address (full width) */}
-            <div>
-                <Label htmlFor="address" className="flex items-center gap-2 mb-2">
-                    <MapPin className="w-4 h-4" /> Address
-                </Label>
-                <Input
-                    id="address"
-                    type="text"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Enter your address"
-                />
-            </div>
+        {/* Row 3: Photo URL */}
+        <div>
+          <Label htmlFor="photoURL" className="flex items-center gap-2 mb-2 font-medium">
+            <Mail className="w-4 h-4 text-[#FFCE00]" /> Avatar URL
+          </Label>
+          <Input
+            id="photoURL"
+            type="url"
+            value={photoURL}
+            onChange={(e) => setPhotoURL(e.target.value)}
+            placeholder="Link to an image (optional)"
+          />
+        </div>
 
-            {/* Row 3: Photo URL */}
-            <div>
-                <Label htmlFor="photoURL" className="flex items-center gap-2 mb-2">
-                    <Mail className="w-4 h-4" /> Avatar URL
-                </Label>
-                <Input
-                    id="photoURL"
-                    type="url"
-                    value={photoURL}
-                    onChange={(e) => setPhotoURL(e.target.value)}
-                    placeholder="Link to an image (optional)"
-                />
-            </div>
-
-            {/* Save Button */}
-            <Button
-              type="submit"
-              disabled={isUpdating}
-              className="w-full mt-6"
-            >
-              {isUpdating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                "Save Changes"
-              )}
-            </Button>
-        </form>
+        {/* Save Button */}
+        <Button
+          type="submit"
+          disabled={isUpdating}
+          className="w-full mt-8 bg-[#FFCE00] hover:bg-[#E6B800] text-black transition-colors"
+        >
+          {isUpdating ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            "Save Changes"
+          )}
+        </Button>
+      </form>
     </motion.div>
   );
 }

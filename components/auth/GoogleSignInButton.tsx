@@ -1,20 +1,26 @@
-// signature-trader/components/auth/GoogleSignInButton.tsx (Complete Code)
+// signature-trader/components/auth/GoogleSignInButton.tsx
 "use client";
 
-import { auth, provider, createUserProfileDocument, db } from "@/lib/firebase"; // <-- Import db
+import { auth, provider, createUserProfileDocument, db } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
-import { doc, getDoc } from 'firebase/firestore'; // <-- Import Firestore functions
+import { doc, getDoc } from 'firebase/firestore';
 import { FcGoogle } from "react-icons/fc";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNotificationStore } from "@/lib/store/useNotificationStore"; 
+
+interface GoogleSignInButtonProps {
+    redirectPath: string;
+    isSignUpMode: boolean; // <-- NEW PROP
+}
 
 export default function GoogleSignInButton({ 
-  redirectPath 
-}: { 
-  redirectPath: string 
-}) {
+  redirectPath,
+  isSignUpMode, // <-- Use the new prop
+}: GoogleSignInButtonProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter(); 
+  const { addNotification } = useNotificationStore();
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -22,41 +28,51 @@ export default function GoogleSignInButton({
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // --- GOOGLE SIGN-IN VALIDATION CHECK ---
+      // --- VALIDATION CHECK ---
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
-        // User document found: proceed normally, ensuring document is up-to-date (optional step)
-        await createUserProfileDocument(user); // Re-run creation helper to ensure data/role exists
+        // User document found (Existing user): Update profile and proceed to Sign In.
+        await createUserProfileDocument(user); 
+        addNotification("Signed in with Google successfully!", "success");
+
+      } else if (isSignUpMode) {
+        // User is new (only exists in Auth, not Firestore) AND we are in Sign Up mode:
+        // Finalize registration by creating the Firestore document.
+        await createUserProfileDocument(user);
+        addNotification(`Account created with Google successfully! Welcome, ${user.displayName || 'User'}.`, "success");
+
       } else {
-        // User exists in Auth but NOT in Firestore: force sign out and redirect to sign-up view.
+        // User is new but clicked the "Sign In" button: Force sign out and guide them to Sign Up.
         await auth.signOut();
         throw new Error('auth/user-profile-missing');
       }
-      // --- END GOOGLE SIGN-IN VALIDATION CHECK ---
-
+      
       router.push(redirectPath);
+
     } catch (err: any) {
       console.error(err);
       
       let errorMessage = "An error occurred during Google sign-in.";
-      if (err.message && err.message.includes('auth/user-profile-missing')) {
-          errorMessage = 'Account not fully set up. Please use the Sign Up option.';
-      } else if (err.code && err.code.includes('auth/popup-closed-by-user')) {
-          // Ignore popup close error
-          errorMessage = '';
-      }
       
-      if (errorMessage) {
-          // A simple alert is used here, but for better UX, you might want to integrate this error into the parent page state
-          alert(errorMessage); 
+      if (err.code === 'auth/popup-closed-by-user') {
+          errorMessage = 'Sign-in window closed. Please try again.'; 
+          addNotification(errorMessage, "info");
+      } else if (err.message && err.message.includes('auth/user-profile-missing')) {
+          errorMessage = 'Account not found. Please use the Sign Up option.';
+          addNotification(errorMessage, "error");
+      } else {
+          errorMessage = err.message || errorMessage;
+          addNotification(errorMessage, "error");
       }
       
     } finally {
       setLoading(false);
     }
   };
+
+  const buttonText = isSignUpMode ? "Sign up with Google" : "Sign in with Google";
 
   return (
     <button
@@ -65,7 +81,7 @@ export default function GoogleSignInButton({
       className="w-full flex items-center justify-center gap-2 border border-gray-300 rounded-md px-4 py-2 hover:bg-gray-50 transition"
     >
       <FcGoogle className="text-xl" />
-      {loading ? "Signing in..." : "Sign in with Google"}
+      {loading ? "Processing..." : buttonText}
     </button>
   );
 }

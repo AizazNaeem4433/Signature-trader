@@ -3,12 +3,13 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function SignatureCollectionHero() {
   return (
     <section className="w-full bg-white dark:bg-[#0a0a0a] text-[#181818] dark:text-white py-10 transition-colors duration-300">
       <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 items-center px-6 lg:px-8">
-        
+
         {/* ===== LEFT CONTENT ===== */}
         <motion.div
           initial={{ opacity: 0, x: -60 }}
@@ -45,14 +46,17 @@ export default function SignatureCollectionHero() {
             whileInView={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.5 }}
           >
-            <Button
-              className="bg-[#181818] dark:bg-white text-white dark:text-[#181818]
-                px-8 py-4 rounded-full font-semibold text-lg
-                hover:bg-[#FFCE00] hover:text-[#181818]
-                transition-all duration-300 shadow-md hover:shadow-lg"
-            >
-              Shop Now
-            </Button>
+            <Link href="/products">
+              <Button
+                className="bg-[#181818] dark:bg-white text-white dark:text-[#181818]
+      px-8 py-4 rounded-full font-semibold text-lg
+      hover:bg-[#FFCE00] hover:text-[#181818]
+      transition-all duration-300 shadow-md hover:shadow-lg cursor-pointer"
+              >
+                Shop Now
+              </Button>
+            </Link>
+
           </motion.div>
         </motion.div>
 
@@ -82,7 +86,6 @@ export default function SignatureCollectionHero() {
             priority
           />
 
-          {/* Subtle gradient overlay for dark mode */}
           <div className="absolute inset-0 bg-linear-to-t from-black/20 to-transparent dark:from-black/40 pointer-events-none" />
         </motion.div>
       </div>
