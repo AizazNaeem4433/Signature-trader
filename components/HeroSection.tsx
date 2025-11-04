@@ -1,16 +1,92 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { useState, useEffect } from "react";
 
-export default function SignatureCollectionHero() {
+// Define a TypeScript interface for clarity and type safety
+interface CollectionItem {
+  id: number;
+  bigImg: string;
+  alt: string;
+  tagline: string;
+  description: string;
+}
+
+// --- 1. Define Changing Content Data ---
+const collectionData: CollectionItem[] = [
+  {
+    id: 1,
+    bigImg: "/home/Cutlery.jpg", 
+    alt: "Luxurious Cutlery Set",
+    tagline: "The Art of Dining: Premium Cutlery",
+    description:
+      "Craft every meal into a masterpiece. Discover our premium cutlery collection—the foundation of a refined dining experience.",
+  },
+  {
+    id: 2,
+    bigImg: "/home/fasion.jpg",
+    alt: "Latest Fashion Footwear",
+    tagline: "Walk the Trend: Shoes for Every Occasion",
+    description:
+      "Step into style and comfort with footwear designed to make a statement. Find the perfect pair to complete your fashion look.",
+  },
+  {
+    id: 3,
+    bigImg: "/home/decor.jpg",
+    alt: "Contemporary Home Decor",
+    tagline: "Design Your Haven: Exquisite Home Décor",
+    description:
+      "Elevate your living spaces with unique pieces. From timeless classics to modern accents, our décor transforms houses into signature homes.",
+  },
+];
+
+// --- Static Images and Text ---
+const staticMiniImage = {
+  src: "/home/static-signature-item.png",
+  alt: "Signature Traders Product",
+};
+
+// Static Main Heading
+const staticHeading = "Signature Traders: Essential Style for Modern Living";
+
+
+export default function SignatureTradersHero() {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const totalSlides = collectionData.length;
+  const activeData = collectionData[currentSlide];
+
+  // Auto-rotate effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % totalSlides);
+    }, 5000); // Change slide every 5 seconds
+
+    return () => clearInterval(timer);
+  }, [totalSlides]);
+
+  // Framer Motion variants for fade transition (Text)
+  const fadeVariants = {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -10 },
+    transition: { duration: 0.8 },
+  };
+
+  // Framer Motion variants for the large image transition
+  const imageFadeVariants = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+    transition: { duration: 1.2, ease: "easeInOut" },
+  };
+
   return (
-    <section className="w-full bg-white dark:bg-[#0a0a0a] text-[#181818] dark:text-white py-10 transition-colors duration-300">
+    <section className="w-full bg-white dark:bg-[#0a0a0a] text-[#181818] dark:text-white py-2 transition-colors duration-300">
       <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 items-center px-6 lg:px-8">
-
-        {/* ===== LEFT CONTENT ===== */}
+        
+        {/* ===== LEFT CONTENT (Static Heading, Static Mini Image, Changing Content) ===== */}
         <motion.div
           initial={{ opacity: 0, x: -60 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -18,75 +94,103 @@ export default function SignatureCollectionHero() {
           viewport={{ once: true }}
           className="space-y-8"
         >
-          <motion.h1
-            initial={{ y: 40, opacity: 0 }}
-            whileInView={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight tracking-tight"
-          >
-            The Signature Collection:
-            <br />
-            <span className="text-[#FFCE00] drop-shadow-[0_2px_6px_rgba(255,206,0,0.4)]">
-              Essentials for Modern Living
-            </span>
-          </motion.h1>
+          {/* Static Main Heading */}
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
+            {staticHeading}
+          </h1>
+          
+          {/* Main Content Block Container: Separating Static and Dynamic Content */}
+          <div className="flex flex-col sm:flex-row gap-6 items-start">
+            
+            {/* 1. STATIC MINI IMAGE */}
+            <div className="flex-shrink-0 w-40 h-56 overflow-hidden rounded-xl shadow-lg relative bg-gray-50 dark:bg-gray-900">
+              <Image
+                src={staticMiniImage.src}
+                alt={staticMiniImage.alt}
+                fill
+                sizes="160px"
+                className="object-cover"
+                priority
+              />
+            </div>
 
-          <motion.p
-            initial={{ y: 30, opacity: 0 }}
-            whileInView={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.7, delay: 0.3 }}
-            className="text-base sm:text-lg text-gray-600 dark:text-gray-300 max-w-md"
-          >
-            From elegant cutlery to smart home comfort — find your signature
-            style with products that blend quality and design seamlessly.
-          </motion.p>
+            {/* Content Container (Tagline, Description, Button) */}
+            <div className="space-y-6 max-w-sm">
+                
+                {/* 2. DYNAMIC CONTENT (Tagline and Description) - Wrapped in AnimatePresence */}
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={activeData.id} // Key ensures re-render and transition
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                        variants={fadeVariants}
+                        className="space-y-4"
+                    >
+                        {/* Changing Tagline/Sub-heading */}
+                        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">
+                            {activeData.tagline}
+                        </h2>
 
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            whileInView={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-          >
-            <Link href="/products">
-              <Button
-                className="bg-[#181818] dark:bg-white text-white dark:text-[#181818]
-      px-8 py-4 rounded-full font-semibold text-lg
-      hover:bg-[#FFCE00] hover:text-[#181818]
-      transition-all duration-300 shadow-md hover:shadow-lg cursor-pointer"
-              >
-                Shop Now
-              </Button>
-            </Link>
+                        {/* Changing Description */}
+                        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300">
+                            {activeData.description}
+                        </p>
+                    </motion.div>
+                </AnimatePresence>
 
-          </motion.div>
+                {/* 3. STATIC BUTTON (FIXED: Uses motion.a with href, eliminating nested <a> error) */}
+                <Button
+                    asChild 
+                    className="bg-black text-white 
+                      px-8 py-3 rounded-md font-semibold text-base
+                      hover:bg-[#FFCE00] hover:text-[#181818] transition-all duration-300"
+                >
+                    <motion.a
+                      href="/products" // <-- The target path for the link
+                      initial={{ opacity: 0 }}
+                      whileInView={{ opacity: 1 }}
+                      transition={{ duration: 0.5, delay: 0.8 }}
+                    >
+                      Shop Collection
+                    </motion.a>
+                </Button>
+            </div>
+
+          </div>
+          
         </motion.div>
 
-        {/* ===== RIGHT IMAGE ===== */}
+        {/* --- RIGHT IMAGE (The changing Big Image) --- */}
         <motion.div
           initial={{ opacity: 0, x: 60 }}
           whileInView={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
           viewport={{ once: true }}
-          className="relative w-full rounded-2xl overflow-hidden shadow-2xl"
+          className="relative w-full rounded-2xl overflow-hidden shadow-2xl h-[400px] md:h-[550px] lg:h-[650px]"
         >
-          <Image
-            src="/Main-image.jpg"
-            alt="Signature Collection Hero"
-            width={800}
-            height={1000}
-            className="
-              w-full 
-              h-auto 
-              object-cover 
-              transition-all 
-              duration-700 
-              md:grayscale md:hover:grayscale-0 
-              md:hover:scale-105
-              rounded-2xl
-            "
-            priority
-          />
-
-          <div className="absolute inset-0 bg-linear-to-t from-black/20 to-transparent dark:from-black/40 pointer-events-none" />
+          {/* Image wrapped in AnimatePresence for transition */}
+          <AnimatePresence>
+            <motion.div
+              key={activeData.id}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              variants={imageFadeVariants}
+              className="absolute inset-0"
+            >
+              <Image
+                src={activeData.bigImg}
+                alt={activeData.alt}
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="fill"
+                priority={currentSlide === 0}
+              />
+              {/* Optional: Overlay for contrast */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
+            </motion.div>
+          </AnimatePresence>
         </motion.div>
       </div>
     </section>

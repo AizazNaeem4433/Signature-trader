@@ -4,13 +4,14 @@
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
-import { Loader2, Zap, Star, ShoppingCart } from 'lucide-react';
+import { Loader2, Zap, Star, ArrowRight } from 'lucide-react';
 import ProductCard from "@/components/storefront/ProductCard";
 import Hero from "@/components/HeroSection";
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { cn } from '@/lib/utils'; // Assuming this utility is correctly configured
 
-// --- INTERFACES (Matching Firestore Structure) ---
+// --- INTERFACES (Unchanged) ---
 interface ProductMedia { id: number; url: string; alt: string; type: 'image' | 'video'; }
 interface VariantOption { id: number; value: string; priceAdjustment: number; linkedMediaId: number | null; }
 interface VariantType { name: string; options: VariantOption[]; }
@@ -34,14 +35,25 @@ interface Category {
     slug: string;
 }
 
+// Framer Motion Variants for Staggered Grid Entrance (Unchanged)
+const container = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.05,
+        }
+    }
+};
+
 export default function HomePage() {
     const [products, setProducts] = useState<ProductData[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // --- FETCH PRODUCTS & CATEGORIES ---
+    // --- FETCH PRODUCTS & CATEGORIES 
     useEffect(() => {
-        // Fetch all products (sorted by creation date for "Featured" simplicity)
+        // ... (existing useEffect logic is unchanged for data fetching)
         const productsQuery = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
         const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
             const productsList = snapshot.docs
@@ -50,11 +62,10 @@ export default function HomePage() {
             setProducts(productsList);
             setLoading(false);
         }, (error) => {
-            console.error("Error fetching products:", error);
+            console.error("Error Getting products:", error);
             setLoading(false);
         });
 
-        // Fetch categories 
         const categoriesQuery = query(collection(db, 'categories'), orderBy('name', 'asc'));
         const unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => {
             setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
@@ -66,33 +77,38 @@ export default function HomePage() {
         };
     }, []);
 
-    // --- Data Curation Logic ---
-    const featuredProducts = products.slice(0, 6); // Top 6 for Featured Section (2 rows of 3)
+    // --- Data Curation Logic (Unchanged) ---
+    const featuredProducts = products.slice(0, 6); 
 
-    // Prepare Category Sections (Groups products under their category name)
     const categorySections = categories.map(cat => ({
         ...cat,
-        products: products.filter(p => p.category_id === cat.id).slice(0, 4) // Show top 4 products per category
+        products: products.filter(p => p.category_id === cat.id).slice(0, 4) 
     })).filter(section => section.products.length > 0);
 
 
     if (loading) {
         return (
-            <main className="min-h-screen flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#FFCE00]" />
+            // Spinner color changed to yellow
+            <main className="fixed inset-0 z-50 bg-background flex items-center justify-center">
+                <Loader2 className="w-10 h-10 animate-spin text-[#FFCE00]" />
             </main>
         );
     }
 
-    // Helper to render product grid (3 items per row on larger screens)
+    // Helper to render product grid 
     const renderProductGrid = (products: ProductData[], itemsPerRow: 3 | 4) => (
-        <div className={
-            // Dynamic Tailwind grid layout based on itemsPerRow
-            cn("grid gap-6", {
-                "grid-cols-2 sm:grid-cols-3 lg:grid-cols-3": itemsPerRow === 3,
-                "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4": itemsPerRow === 4
-            })
-        }>
+        <motion.div 
+            className={
+                cn("grid gap-6", {
+                    "grid-cols-2 md:grid-cols-3 xl:grid-cols-3": itemsPerRow === 3,
+                    "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4": itemsPerRow === 4
+                })
+            }
+            variants={container}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.1 }}
+        >
             {products.map((product) => (
                 <ProductCard
                     key={product.id}
@@ -102,93 +118,99 @@ export default function HomePage() {
                     cutPrice={product.cutPrice}
                     shortDescription={product.shortDescription}
                     media={product.media}
-                    variantTypes={product.variantTypes} id={''}                />
+                    variantTypes={product.variantTypes} id={product.id}
+                />
             ))}
+        </motion.div>
+    );
+    
+    // Custom button component (Color changed from red to yellow/black)
+    const ViewAllButton = ({ href, text }: { href: string, text: string }) => (
+        <div className="flex justify-center mt-10">
+            <Link 
+                href={href} 
+                // Background is yellow, text is black/foreground
+                className="inline-flex items-center justify-center rounded-full bg-[#FFCE00] px-6 py-3 text-base font-semibold text-foreground shadow-lg transition-all hover:bg-[#E6B800] hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+                {text} <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
         </div>
     );
 
 
     return (
-        <main className="flex flex-col">
+        <main className="flex flex-col bg-background">
             
-            {/* Hero Section (Already exists) */}
             <Hero />
 
-            <div className="max-w-7xl mx-auto px-6 py-16 w-full space-y-16">
+            <div className="max-w-7xl mx-auto px-6 py-20 w-full space-y-24">
 
-                {/* --- 1. Featured Products (Max 6, 3 per row) --- */}
+                {/* --- 1. Featured Products (Yellow Accent) --- */}
                 {featuredProducts.length > 0 && (
                     <section>
-                        <motion.h2
-                            initial={{ opacity: 0, y: 20 }}
+                        {/* Subtitle color changed to yellow */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 30 }}
                             whileInView={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.5 }}
                             viewport={{ once: true }}
-                            className="text-3xl font-bold mb-8 flex items-center justify-center gap-3 text-red-600"
+                            className="text-center mb-12"
                         >
-                            <Zap className="w-6 h-6"/> Featured Best Sellers
-                        </motion.h2>
+                            <h3 className="text-sm font-semibold uppercase tracking-widest text-[#FFCE00] mb-2">
+                                🔥 Don't Miss Out
+                            </h3>
+                            <h2 className="text-4xl font-extrabold flex items-center justify-center gap-3 text-foreground/90">
+                                {/* Icon color changed to yellow */}
+                                <Zap className="w-8 h-8 text-[#FFCE00]"/> Featured Best Sellers
+                            </h2>
+                        </motion.div>
                         
                         {renderProductGrid(featuredProducts, 3)}
                         
-                        <div className="flex justify-center mt-8">
-                            <Link href="/products" className="text-red-600 font-medium hover:underline transition-colors">
-                                View All Products →
-                            </Link>
-                        </div>
+                        <ViewAllButton href="/products" text="Explore All Products" />
                     </section>
                 )}
                 
-                {/* --- 2. Category Sections (Dynamic) --- */}
+                {/* --- 2. Category Sections (Yellow Accent) --- */}
                 {categorySections.map((section, index) => (
                     <section key={section.id}>
-                        <motion.h2
-                            initial={{ opacity: 0, y: 20 }}
+                         {/* Subtitle color changed to yellow/black contrast */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 30 }}
                             whileInView={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.5, delay: 0.1 }}
                             viewport={{ once: true }}
-                            className="text-3xl font-bold mb-8 flex items-center gap-3 text-foreground"
+                            className="text-center md:text-left mb-12"
                         >
-                            <Star className="w-6 h-6 text-[#FFCE00]"/> {section.name} Essentials
-                        </motion.h2>
+                             <h3 className="text-sm font-semibold uppercase tracking-widest text-foreground/70 mb-2">
+                                Curated Collection
+                            </h3>
+                            <h2 className="text-4xl font-extrabold flex items-center gap-3 text-foreground/90 justify-center md:justify-start">
+                                {/* Icon color is the vibrant yellow */}
+                                <Star className="w-8 h-8 text-[#FFCE00]"/> {section.name} Essentials
+                            </h2>
+                        </motion.div>
                         
                         {renderProductGrid(section.products, 4)}
 
-                        <div className="flex justify-center mt-8">
-                            <Link href={`/products?category=${section.slug}`} className="text-red-600 font-medium hover:underline transition-colors">
-                                View All {section.name} Products →
-                            </Link>
-                        </div>
+                        <ViewAllButton 
+                            href={`/products?category=${section.slug}`} 
+                            text={`View All ${section.name}`}
+                        />
                     </section>
                 ))}
 
-                {/* Placeholder if no products exist */}
+                {/* Placeholder if no products exist (Color changed for coherence) */}
                 {products.length === 0 && (
-                    <section className="text-center py-20 border-2 border-dashed border-border rounded-xl bg-muted/20">
-                        <p className="text-xl font-semibold text-muted-foreground">Store is currently empty.</p>
-                        <p className="text-sm text-gray-500 mt-2">Add products and categories via the Admin Panel.</p>
+                    <section className="text-center py-20 border-2 border-dashed border-[#FFCE00]/50 rounded-xl bg-yellow-50/50">
+                        <p className="text-2xl font-bold text-foreground">The store is resting!</p>
+                        <p className="text-base text-gray-600 mt-2">No active products found. Time to stock up from the Admin Panel.</p>
+                        <Link href="/admin" className="mt-4 inline-flex items-center text-[#FFCE00] font-medium hover:underline transition-colors">
+                            Go to Admin Panel
+                        </Link>
                     </section>
                 )}
             </div>
         </main>
     );
-}
-function cn(...args: any[]): string {
-  // If first arg is string and second is object, handle conditional classes
-  if (typeof args[0] === 'string' && typeof args[1] === 'object') {
-    const baseClasses = args[0];
-    const conditionals = args[1];
-    
-    // Get active conditional classes
-    const activeConditionals = Object.entries(conditionals)
-      .filter(([_, condition]) => condition)
-      .map(([className]) => className)
-      .join(' ');
-
-    // Combine base classes with active conditionals
-    return [baseClasses, activeConditionals].filter(Boolean).join(' ');
-  }
-  
-  // Fallback: just join all arguments with spaces
-  return args.filter(Boolean).join(' ');
 }

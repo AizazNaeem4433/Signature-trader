@@ -1,4 +1,3 @@
-// signature-trader/components/Navbar.tsx 
 "use client";
 
 import Link from "next/link";
@@ -17,10 +16,14 @@ import CartSidebar from "./CartSidebar";
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore'; 
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; 
+import { Button } from "@/components/ui/button";
+// We must import Fragment explicitly if we use the named version, or use <> shorthand.
+import React, { Fragment } from "react"; // Kept React and Fragment import for compatibility
 
 interface NavLink {
   href: string;
   label: string;
+  isCategory?: boolean;
 }
 
 interface Category {
@@ -34,6 +37,7 @@ export default function Navbar() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [showSearchInput, setShowSearchInput] = useState(false); 
   const [searchQuery, setSearchQuery] = useState(""); 
   
   const pathname = usePathname();
@@ -44,26 +48,24 @@ export default function Navbar() {
   const { items, openCart } = useCartStore();
   const cartItemsCount = items.length; 
 
-  // --- 1. Mounting State & Auth Listener (Runs once) ---
+  // --- 1. Mounting State & Auth Listener ---
   useEffect(() => {
     setMounted(true);
-    // Auth Listener
     const unsubscribeAuth = onAuthStateChanged(auth, (u) => setAuthUser(u)); 
     return () => unsubscribeAuth();
   }, [setAuthUser]);
   
-  // --- 2. Category Fetch Listener (Separated to avoid blocking initial render) ---
+  // --- 2. Category Fetch Listener ---
   useEffect(() => {
     const categoriesQuery = query(collection(db, 'categories'), orderBy('name', 'asc'));
     const unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => {
-        // Set categories and check if we need to remove the initial page-wide loader (if one exists)
         setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
     });
 
     return () => unsubscribeCategories();
-  }, []); // Empty dependency array means it runs once after mount
+  }, []);
 
-  // --- 3. Search Handler (Unchanged) ---
+  // --- 3. Search Handler ---
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
@@ -74,16 +76,18 @@ export default function Navbar() {
     }
   };
 
+  // --- Navigation Links ---
   const baseNavLinks: NavLink[] = [
-    { href: "/", label: "Home" },
-    { href: "/products", label: "All Products" },
-    { href: "/about", label: "About Us" },
-    { href: "/bulk", label: "Bulk Order" },
+    { href: "/", label: "HOME" },
+    { href: "/products", label: "PRODUCTS" },
+    { href: "/about", label: "ABOUT" },
+    { href: "/bulk", label: "BULK" },
+    { href: "/products", label: "CATEGORIES", isCategory: true },
   ];
-
+  
   const navLinks: NavLink[] = [
     ...baseNavLinks,
-    ...(role === 'admin' ? [{ href: "/admin", label: "Admin Panel" }] : []), 
+    ...(role === 'admin' ? [{ href: "/admin", label: "ADMIN PANEL" }] : []), 
   ];
 
   const logoSrc = mounted && theme === "dark" ? "/signature-logo-white.png" : "/signature-logo.png";
@@ -103,131 +107,160 @@ export default function Navbar() {
       initial={{ y: -60, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 80, damping: 14 }}
-      className={cn("bg-white dark:bg-[#0a0a0a] border-b border-gray-200 dark:border-gray-800 sticky top-0 z-50 shadow-md transition-colors duration-300")}
+      className={cn("bg-white dark:bg-[#0a0a0a] border-b border-gray-300 dark:border-gray-800 sticky top-0 z-50 transition-colors duration-300")}
     >
-      <div className={cn("max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3")}>
-        {/* Logo */}
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-          <Link href="/" className={cn("flex items-center")}>
-            {mounted ? (
-              <img src={logoSrc} alt="Logo" className={cn("h-10 sm:h-12 w-auto object-contain")} />
-            ) : (
-              <div className={cn("h-10 sm:h-12 w-auto")} />
-            )}
-          </Link>
-        </motion.div>
-
-        {/* Desktop nav links and Search */}
-        <div className={cn("hidden md:flex gap-6 items-center")}>
-          
-          {/* Search Bar */}
-          <form onSubmit={handleSearch} className={cn("relative flex items-center")}>
-            <Input 
-                type="search"
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className={cn("h-9 w-64 pr-10 bg-muted/30 dark:bg-input/20 border-border")}
-            />
-            <button type="submit" className={cn("absolute right-2 p-1 text-muted-foreground hover:text-foreground transition-colors")} aria-label="Search">
-                <Search className={cn("w-4 h-4")} />
-            </button>
-          </form>
-          
-          {navLinks.map((link, i) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn("relative group font-medium text-[#181818] dark:text-gray-300 transition-all duration-300", 
-                 isLinkActive(link.href) && "text-[#FFCE00] dark:text-[#FFCE00]"
+      <div className={cn("max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-4")}>
+        
+        {/* ===== LEFT: Logo ===== */}
+        <div className="flex-1 max-w-[200px] cursor-pointer">
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
+            <Link href="/" className={cn("flex items-center")}>
+              {mounted ? (
+                <img src={logoSrc} alt="Signature Traders Logo" className={cn("h-10 sm:h-12 w-auto object-contain")} />
+              ) : (
+                <div className={cn("h-10 sm:h-12 w-auto")} />
               )}
-            >
-              {link.label}
-              <span className={cn("absolute left-0 -bottom-1 w-0 h-0.5 bg-[#FFCE00] transition-all duration-300 group-hover:w-full")}></span>
             </Link>
-          ))}
-          
-          {/* CATEGORY DROPDOWN */}
-          <div className={cn("relative group h-full flex items-center")}>
-            <button
-                className={cn(
-                    "flex items-center gap-1 font-medium text-[#181818] dark:text-gray-300 transition-all duration-300",
-                    pathname.includes("/products/category") ? "text-[#FFCE00] dark:text-[#FFCE00]" : "hover:text-[#FFCE00] dark:hover:text-[#FFCE00]"
-                )}
-            >
-                Categories 
-                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200 group-hover:rotate-180")} />
-            </button>
-
-            <div className={cn("absolute left-1/2 -translate-x-1/2 top-full mt-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform scale-95 group-hover:scale-100 min-w-[180px] origin-top")}>
-                <div className={cn("bg-card border border-border rounded-lg shadow-xl p-1 space-y-1")}>
-                    {categories.length > 0 ? (
-                        categories.map((cat) => (
-                            <Link
-                                key={cat.id}
-                                href={`/products/category/${cat.slug}`}
-                                className={cn("block px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/50 rounded-md transition-colors")}
-                                onClick={() => setIsOpen(false)}
-                            >
-                                {cat.name}
-                            </Link>
-                        ))
-                    ) : (
-                         <div className={cn("px-3 py-2 text-sm text-muted-foreground italic")}>No Categories</div>
-                    )}
-                </div>
-            </div>
-          </div>
-          {/* END: CATEGORY DROPDOWN */}
+          </motion.div>
         </div>
 
-        {/* Right icons (Includes Theme Toggle) */}
-        <div className={cn("flex items-center gap-3 sm:gap-4")}>
+
+        {/* ===== CENTER: Desktop nav links and Categories (Fixed centering and reduced gap) ===== */}
+        <div className={cn("hidden md:flex flex-none mx-auto items-center")}> 
+          <div className="flex items-center space-x-2">
+            {navLinks.filter(link => !link.isCategory).map((link, i) => (
+              // FIX 2: Applied key to the Fragment wrapper and using shorthand <>
+              <Fragment key={link.href}> 
+                <Link
+                  href={link.href}
+                  className={cn("relative group font-medium text-[#181818] dark:text-gray-300 transition-all duration-300 text-sm uppercase tracking-wider px-2 cursor-pointer",
+                    isLinkActive(link.href) ? "text-black dark:text-white" : "hover:text-black dark:hover:text-white"
+                  )}
+                >
+                  {link.label}
+                  {/* Hover Underline with Yellow Accent */}
+                  <span className={cn("absolute left-0 -bottom-1 w-0 h-0.5 bg-[#FFCE00] transition-all duration-300 group-hover:w-full")}></span>
+                </Link>
+                {/* Separator Logic */}
+                {i < navLinks.filter(l => !l.isCategory).length - 1 && (
+                  <span className="text-gray-400 dark:text-gray-600 text-sm">/</span>
+                )}
+              </Fragment>
+            ))}
+
+            {/* CATEGORIES DROPDOWN */}
+            {navLinks.find(link => link.isCategory) && (
+              <div className={cn("relative group h-full flex items-center")}>
+                <button
+                    className={cn(
+                        "flex items-center gap-1 font-medium text-[#181818] dark:text-gray-300 transition-all duration-300 text-sm uppercase tracking-wider px-2 cursor-pointer",
+                        pathname.includes("/products/category") ? "text-black dark:text-white" : "hover:text-black dark:hover:text-white"
+                    )}
+                >
+                    CATEGORIES 
+                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200 group-hover:rotate-180")} />
+                </button>
+
+                <div className={cn("absolute left-1/2 -translate-x-1/2 top-full mt-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform scale-95 group-hover:scale-100 min-w-[180px] origin-top")}>
+                    <div className={cn("bg-white dark:bg-[#181818] border border-gray-200 dark:border-gray-800 rounded-lg shadow-xl p-1 space-y-1")}>
+                        {categories.length > 0 ? (
+                            categories.map((cat) => (
+                                <Link
+                                    key={cat.id}
+                                    href={`/products/category/${cat.slug}`}
+                                    className={cn("block px-3 py-2 text-sm font-medium text-foreground hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors cursor-pointer")}
+                                    onClick={() => setIsOpen(false)}
+                                >
+                                    {cat.name}
+                                </Link>
+                            ))
+                        ) : (
+                            <div className={cn("px-3 py-2 text-sm text-muted-foreground italic")}>No Categories</div>
+                        )}
+                    </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ===== RIGHT: Icons (Search, Theme, User, Cart, Mobile Menu) ===== */}
+        {/* FIX 1: Merged multiple className props into a single cn() call */}
+        <div className={cn("flex items-center gap-3 sm:gap-4 flex-1 justify-end")}>
+          
+          {/* Search Icon (Toggle Logic maintained) */}
+          <div className={cn("hidden md:flex relative items-center")}>
+            <AnimatePresence mode="wait">
+              {showSearchInput ? (
+                // Desktop Search Input
+                <motion.form 
+                  key="search-input"
+                  onSubmit={handleSearch} 
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 250, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className={cn("relative flex items-center")}
+                >
+                  <Input 
+                    type="search"
+                    placeholder="Search products..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className={cn("h-9 w-[250px] pr-10 border-gray-400 focus-visible:ring-0")}
+                  />
+                  {/* Search icon placement inside the input field */}
+                  <button type="submit" className={cn("absolute right-10 p-1 text-gray-500 hover:text-black transition-colors")} aria-label="Search">
+                    <Search className={cn("w-4 h-4")} />
+                  </button>
+                  {/* X button placed correctly at the far right of the input group */}
+                  <Button type="button" variant="ghost" size="icon" onClick={() => setShowSearchInput(false)} className="absolute right-0 cursor-pointer">
+                     <X className={cn("w-4 h-4 text-gray-500")} />
+                  </Button>
+                </motion.form>
+              ) : (
+                // Desktop Search Icon (Clickable)
+                <motion.button 
+                  key="search-icon"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  onClick={() => setShowSearchInput(true)} 
+                  className={cn("p-1 text-[#181818] dark:text-gray-300 hover:text-gray-700 transition-colors cursor-pointer")}
+                  aria-label="Open Search"
+                >
+                  <Search className={cn("w-5 h-5")} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+          
           {/* Theme toggle */}
           {mounted && (
             <motion.button
               whileTap={{ rotate: 180, scale: 0.9 }}
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className={cn("p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors")}
+              className={cn("p-1 rounded-full text-[#181818] dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors hidden md:block cursor-pointer")}
               aria-label="Toggle Theme"
             >
-              {theme === "dark" ? <Sun className={cn("w-5 h-5 text-[#FFCE00]")} /> : <Moon className={cn("w-5 h-5 text-[#181818]")} />}
+              {theme === "dark" ? <Sun className={cn("w-5 h-5 text-[#FFCE00]")} /> : <Moon className={cn("w-5 h-5")}/>}
             </motion.button>
           )}
 
-          {/* Cart Icon and Count */}
-          <motion.div whileHover={{ rotate: -10, scale: 1.1 }}>
-            <button
-              onClick={openCart} 
-              className={cn("relative text-[#181818] dark:text-gray-300 hover:text-[#FFCE00] transition-colors")}
-              aria-label="Open Cart"
-            >
-              <ShoppingCart className={cn("w-5 h-5")} />
-              {cartItemsCount > 0 && (
-                <span className={cn("absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold")}>
-                  {cartItemsCount}
-                </span>
-              )}
-            </button>
-          </motion.div>
-
           {/* Profile / Login Icon */}
-          <div className={cn("relative")}>
+          <div className={cn("relative group")}>
             {!isInitialized ? (
-              <Loader2 className={cn("w-5 h-5 animate-spin text-[#FFCE00]")} />
+              <Loader2 className={cn("w-5 h-5 animate-spin text-gray-700")} />
             ) : user ? (
-              <div className={cn("flex items-center gap-2")}>
-                <Link href="/account" className={cn("flex items-center")}> 
-                  <img
-                    src={user.photoURL || "/image.png"}
-                    alt={user.displayName || "User"}
-                    className={cn("w-8 h-8 rounded-full object-cover border-2 border-[#FFCE00]")}
-                  />
+              <div className={cn("flex items-center")}>
+                <Link href="/account" className={cn("text-[#181818] dark:text-gray-300 hover:text-gray-700 transition-colors mr-2 cursor-pointer")} aria-label="My Account">
+                  <User className={cn("w-5 h-5")} />
                 </Link>
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={handleLogout}
-                  className={cn("p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors")}
+                  className={cn("p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer")}
                   aria-label="Logout"
                 >
                   <LogOut className={cn("w-4 h-4 text-red-500")} />
@@ -236,25 +269,43 @@ export default function Navbar() {
             ) : (
               <Link
                 href={`/auth/login?redirect=${pathname}`}
-                className={cn("text-[#181818] dark:text-gray-300 hover:text-[#FFCE00] transition-colors")}
+                className={cn("text-[#181818] dark:text-gray-300 hover:text-gray-700 transition-colors cursor-pointer")}
+                aria-label="Login / Sign Up"
               >
                 <User className={cn("w-5 h-5")} />
               </Link>
             )}
           </div>
 
+          {/* Cart Icon and Count */}
+          <motion.div whileHover={{ scale: 1.05 }} className={cn("relative")}>
+            <button
+              onClick={openCart} 
+              className={cn("relative flex items-center justify-center bg-[#eaece0] dark:bg-gray-700 text-[#181818] dark:text-white rounded-full px-3 py-2 transition-colors hover:bg-[#dcdcce] cursor-pointer")}
+              aria-label="Open Cart"
+            >
+              <ShoppingCart className={cn("w-4 h-4 mr-1")} />
+              {cartItemsCount > 0 && (
+                <span className={cn("absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold")}>
+                  {cartItemsCount}
+                </span>
+              )}
+            </button>
+          </motion.div>
+
           {/* Mobile menu button */}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            className={cn("md:hidden text-[#181818] dark:text-gray-300 hover:text-[#FFCE00] transition-colors")}
+            className={cn("md:hidden text-[#181818] dark:text-gray-300 hover:text-gray-700 transition-colors cursor-pointer")}
             onClick={() => setIsOpen(!isOpen)}
+            aria-label="Toggle Mobile Menu"
           >
             {isOpen ? <X className={cn("w-6 h-6")} /> : <Menu className={cn("w-6 h-6")} />}
           </motion.button>
         </div>
       </div>
 
-      {/* Mobile menu */}
+      {/* Mobile menu (Logic maintained) */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -280,12 +331,13 @@ export default function Navbar() {
                 </button>
               </form>
               
+              {/* Mobile Links */}
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   onClick={() => setIsOpen(false)}
-                  className={cn("block px-4 py-2 rounded-md text-[#181818] dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-[#FFCE00] transition-all duration-200")}
+                  className={cn("block px-4 py-2 rounded-md text-[#181818] dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-700 transition-all duration-200")}
                 >
                   {link.label}
                 </Link>
@@ -304,6 +356,21 @@ export default function Navbar() {
                           → {cat.name}
                       </Link>
                   ))}
+              </div>
+              
+              {/* Mobile Theme Toggle */}
+              <div className={cn("flex justify-between items-center px-4 py-2 border-t border-border")}>
+                 <span className="text-sm font-medium">Dark Mode</span>
+                 {mounted && (
+                    <motion.button
+                        whileTap={{ rotate: 180, scale: 0.9 }}
+                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                        className={cn("p-2 rounded-full transition-colors")}
+                        aria-label="Toggle Theme"
+                    >
+                        {theme === "dark" ? <Sun className={cn("w-5 h-5 text-[#FFCE00]")} /> : <Moon className={cn("w-5 h-5 text-[#181818]")} />}
+                    </motion.button>
+                 )}
               </div>
             </div>
           </motion.div>
