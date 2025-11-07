@@ -7,7 +7,7 @@ import Navbar from "@/components/Navbar";
 import LenisProvider from "@/components/LenisProvider";
 import Footer from "@/components/Footer";
 import FirebaseClientInitializer from "@/components/FirebaseClientInitializer"; 
-import ToastNotification from "@/components/ui/ToastNotification"; // <-- NEW IMPORT
+import ToastNotification from "@/components/ui/ToastNotification"; 
 
 const inter = Inter({
   subsets: ["latin"],
@@ -15,9 +15,39 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Signature Trader",
-  description: "Signature Trader is a platform for trading in cutlery,Shoes,Home Decor.",
+  title: {
+    default: 'Signature Trader | Premium Cutlery, Home Decor, & Fashion',
+    template: '%s | Signature Trader', 
+  },
+  description: 'Discover premium collections at Signature Trader. Shop high-quality cutlery, elegant home decor, stylish footwear, and modern home appliances in Pakistan.',
+  
+  openGraph: {
+    title: 'Signature Trader | Premium Cutlery, Home Decor, & Fashion',
+    description: 'Discover premium collections at Signature Trader.',
+    url: 'https://signature-trader.com', 
+    siteName: 'Signature Trader',
+    images: [
+      {
+
+        url: '/og-image.png', 
+        width: 1200,
+        height: 900,
+        alt: 'Signature Trader Lifestyle Collection',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  
+    twitter: {
+    card: 'summary_large_image',
+    title: 'Signature Trader | Premium Cutlery, Home Decor, & Fashion',
+    description: 'Discover premium collections at Signature Trader.',
+     images: ['/og-image.png'], 
+  },
 };
+
+
 
 export default function RootLayout({
   children,

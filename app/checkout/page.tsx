@@ -13,7 +13,8 @@ import { useCartStore } from '@/lib/store/useCartStore';
 import { useAuthStore } from '@/lib/store/useAuthStore';
 import { useNotificationStore } from '@/lib/store/useNotificationStore';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, addDoc } from 'firebase/firestore';
+// --- NAYA CODE: 'updateDoc' aur 'increment' ko import karein ---
+import { doc, getDoc, collection, addDoc, updateDoc, increment } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -37,13 +38,11 @@ function SummaryRow({ label, value, isTotal = false }: { label: string; value: s
 
 export default function CheckoutPage() {
   const router = useRouter();
-  // We rely on subtotal, taxRate is 0, total is subtotal. We DON'T need clearCart here anymore.
   const { items, subtotal, taxRate } = useCartStore(); 
   const { user: authUser, isLoggedIn, isInitialized } = useAuthStore();
   const { addNotification } = useNotificationStore();
 
   const SHIPPING_COST = 250;
-  // Final order total calculation with fixed shipping (Tax is 0 from store)
   const finalOrderTotal = subtotal + SHIPPING_COST; 
 
   const [shippingDetails, setShippingDetails] = useState({
@@ -68,7 +67,6 @@ export default function CheckoutPage() {
       if (!isLoggedIn) {
         router.push("/auth/login?redirect=/checkout");
       } else if (items.length === 0) {
-        // This is the logic that was causing the unwanted redirect
         addNotification("Your cart is empty. Cannot checkout.", "info");
         router.push("/products"); 
       } else {
@@ -117,14 +115,14 @@ export default function CheckoutPage() {
         shipping_address: shippingDetails.address.trim(),
         shipping_phone: shippingDetails.phone.trim(),
         items: items.map(item => ({
-          productId: item.productId,
+          productId: item.productId, // Product ID ko yahan save karein
           name: item.name,
           quantity: item.quantity,
-          price: item.totalPrice,
+          price: item.totalPrice, // Yeh price per item hai
           variants: item.selectedVariants,
         })),
         subtotal,
-        tax_amount: subtotal * taxRate, // This is 0 but kept for data consistency
+        tax_amount: subtotal * taxRate,
         shipping_cost: SHIPPING_COST,
         total_amount: finalOrderTotal,
         payment_method: 'Cash on Delivery',
@@ -132,17 +130,30 @@ export default function CheckoutPage() {
         created_at: new Date().toISOString(),
       };
 
+      // 1. Order ko database mein save karein
       const addedDoc = await addDoc(collection(db, 'orders'), orderDoc);
       const orderId = addedDoc.id;
 
-      // === FIX APPLIED HERE: DO NOT CLEAR CART YET ===
-      // clearCart(); 
-      
+      // --- NAYA CODE: Stock Deduction Logic ---
+      // 2. Har item ke stock ko update karein
+      for (const item of orderDoc.items) {
+        const productRef = doc(db, 'products', item.productId);
+        
+        // 'increment' function istemal karein taake stock atomically update ho
+        // Hum 'quantity' ko negative number ke taur par increment karein gay (stock - quantity)
+        await updateDoc(productRef, {
+          stock: increment(-item.quantity)
+        });
+      }
+      // --- NAYA CODE END ---
+
       addNotification(`Order placed successfully! Order ID: ${orderId.slice(-8)}`, "success");
-      // This is the correct redirection
+      
+      // 3. Success page par redirect karein
       router.push(`/checkout/success/${orderId}`); 
+
     } catch (error) {
-      console.error("Failed to place order:", error);
+      console.error("Failed to place order or update stock:", error);
       addNotification("Failed to place order. Please try again or contact support.", "error");
 
     } finally {
@@ -228,8 +239,8 @@ export default function CheckoutPage() {
           <div className={cn("space-y-4 max-h-60 overflow-y-auto pr-2")}>
             {items.map((item, index) => (
               <div key={index} className={cn("flex gap-4 items-center")}>
-                <img src={item.mediaUrl} alt={item.name} className={cn("w-12 h-12 rounded-md object-cover flex-shrink-0")} />
-                <div className={cn("flex-grow")}>
+                <img src={item.mediaUrl} alt={item.name} className={cn("w-12 h-12 rounded-md object-cover shrink-0")} />
+                <div className={cn("grow")}>
                   <p className={cn("text-sm font-medium line-clamp-1")}>{item.name}</p>
                   <p className={cn("text-xs text-muted-foreground")}>{item.quantity} x {item.totalPrice.toLocaleString()}</p>
                 </div>

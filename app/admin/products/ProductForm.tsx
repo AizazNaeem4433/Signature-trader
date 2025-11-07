@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, PlusCircle, Trash2, Image as ImageIcon, MinusCircle, Upload, Save } from 'lucide-react'; 
+import { Loader2, PlusCircle, Trash2, Image as ImageIcon, MinusCircle, Upload, Save, Star } from 'lucide-react'; 
 import { useNotificationStore } from '@/lib/store/useNotificationStore';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 
 
-// --- DATA INTERFACES (UNCHANGED) ---
+// --- DATA INTERFACES ---
 interface Category { id: string; name: string; }
 interface ProductMedia { id: number; url: string; alt: string; type: 'image' | 'video'; } 
 interface VariantOption { id: number; value: string; priceAdjustment: number; linkedMediaId: number | null; }
@@ -32,17 +32,22 @@ interface ProductFormState {
     detailedDescription: string;
     slug: string;
     basePrice: number;
-    cutPrice: number; // <-- NEW: Original price for discount display
+    cutPrice: number; 
     category_id: string;
     stock: number;
     isActive: boolean;
+    isFeatured: boolean; // <-- NEW: Featured product flag
     variantTypes: VariantType[];
     media: ProductMedia[];
 }
 
 const initialProductState: ProductFormState = {
     name: '', shortDescription: '', detailedDescription: '', slug: '', basePrice: 0, cutPrice: 0, category_id: '',
-    stock: 1, isActive: true, variantTypes: [], media: [],
+    stock: 1, 
+    isActive: true, 
+    isFeatured: false, // <-- NEW: Default value
+    variantTypes: [], 
+    media: [],
 };
 
 interface ProductFormProps {
@@ -58,12 +63,9 @@ export default function ProductForm({ productId, categories, productData, onSave
     const [loading, setLoading] = useState(false);
     const { addNotification } = useNotificationStore();
     
-    // File upload states
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false); 
 
-    // ... (useEffect, generateUniqueId, useEffect for Slug, handleSubmit and other handlers are unchanged for brevity)
-    
     // Load existing data when editing
     useEffect(() => {
         if (productId && productData) {
@@ -92,7 +94,6 @@ export default function ProductForm({ productId, categories, productData, onSave
         const file = event.target.files?.[0];
         if (!file) return;
         
-        // Determine media type for Cloudinary and form data
         const mediaType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'other';
         if (mediaType === 'other') {
              addNotification("Unsupported file type. Please upload image or video.", "error");
@@ -117,7 +118,7 @@ export default function ProductForm({ productId, categories, productData, onSave
             uploadFormData.append('upload_preset', UPLOAD_PRESET);
             uploadFormData.append('folder', 'signature_trader_products');
             
-            const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${mediaType}/upload`; // Dynamic endpoint
+            const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${mediaType}/upload`; 
 
             const response = await fetch(uploadUrl, {
                 method: 'POST',
@@ -131,14 +132,14 @@ export default function ProductForm({ productId, categories, productData, onSave
 
             const data = await response.json();
 
-            // Add the secure URL to the form data
             setFormData(prev => ({
                 ...prev,
                 media: [...prev.media, { 
                     id: generateUniqueId(), 
                     url: data.secure_url, 
-                    alt: file.name.split('.')[0],
-                    type: mediaType as 'image' | 'video', // Save file type
+                    // --- FIX: Use file name as default alt text ---
+                    alt: file.name.split('.')[0].replace(/_/g, ' '), 
+                    type: mediaType as 'image' | 'video',
                 }]
             }));
             
@@ -153,7 +154,7 @@ export default function ProductForm({ productId, categories, productData, onSave
         }
     };
     
-    // --- MEDIA/VARIANT HANDLERS (Omitted for brevity, assumed functional) ---
+    // --- MEDIA/VARIANT HANDLERS ---
     const handleRemoveMedia = (id: number) => {
         setFormData(prev => ({
             ...prev,
@@ -230,7 +231,6 @@ export default function ProductForm({ productId, categories, productData, onSave
         const action = productId ? 'updated' : 'created';
 
         try {
-            // 1. INPUT VALIDATION
             if (formData.basePrice <= 0 || !formData.name || !formData.category_id || !formData.shortDescription) {
                 addNotification("Name, Price, Category, and Short Description are required.", "error");
                 setLoading(false);
@@ -251,12 +251,12 @@ export default function ProductForm({ productId, categories, productData, onSave
             const dataToSave = {
                 ...formData,
                 basePrice: Number(formData.basePrice),
-                cutPrice: Number(formData.cutPrice), // Save the original price
+                cutPrice: Number(formData.cutPrice),
                 stock: Number(formData.stock),
+                isFeatured: formData.isFeatured, // <-- Ensure boolean is saved
                 ...(productId ? {} : { createdAt: new Date() })
             };
 
-            // 2. FIRESTORE SAVE LOGIC
             if (productId) {
                 const productRef = doc(db, 'products', productId);
                 await updateDoc(productRef, dataToSave);
@@ -265,7 +265,6 @@ export default function ProductForm({ productId, categories, productData, onSave
             }
 
             addNotification(`Product '${formData.name}' successfully ${action}!`, "success");
-
             onSave();
         } catch (error) {
             console.error("Product save failed:", error);
@@ -280,7 +279,7 @@ export default function ProductForm({ productId, categories, productData, onSave
         <form onSubmit={handleSubmit} className="space-y-8">
             <h3 className="text-2xl font-semibold text-red-600 mb-4">{productId ? "Edit Product" : "Add New Product"}</h3>
 
-            {/* General Details: Grid stacks on mobile */}
+            {/* General Details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <Label htmlFor="name">Product Name *</Label>
@@ -289,14 +288,13 @@ export default function ProductForm({ productId, categories, productData, onSave
                 </div>
                 <div>
                     <Label htmlFor="slug">Product Slug (URL)</Label>
-                    {/* Slug field is now primarily read-only/auto-generated */}
                     <Input id="slug" type="text" placeholder="auto-generated" 
                             value={formData.slug} onChange={(e) => setFormData({...formData, slug: e.target.value})} />
                 </div>
             </div>
 
-            {/* Price, Stock, and Category: Grid stacks partially on mobile */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {/* Price, Stock, Category, and Featured Status */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
                  <div>
                     <Label htmlFor="basePrice">Discounted Price (PKR) *</Label>
                     <Input id="basePrice" type="number" step="0.01" min="1" required 
@@ -308,7 +306,6 @@ export default function ProductForm({ productId, categories, productData, onSave
                             value={formData.cutPrice || ''} onChange={(e) => setFormData({...formData, cutPrice: parseFloat(e.target.value) || 0})} />
                 </div>
                 
-                {/* Category Selector */}
                 <div>
                     <Label htmlFor="category_id">Category *</Label>
                     <Select
@@ -330,13 +327,33 @@ export default function ProductForm({ productId, categories, productData, onSave
                 </div>
 
                 <div>
-                    <Label htmlFor="isActive">Stock</Label>
+                    <Label htmlFor="stock">Stock</Label>
                     <Input id="stock" type="number" min="0" required 
                             value={formData.stock} onChange={(e) => setFormData({...formData, stock: parseInt(e.target.value) || 0})} />
                 </div>
+
+                {/* --- NEW: IS FEATURED --- */}
+                <div>
+                    <Label htmlFor="isFeatured" className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-yellow-500" /> Featured
+                    </Label>
+                    <Select
+                        onValueChange={(value) => setFormData({...formData, isFeatured: value === 'true'})}
+                        value={String(formData.isFeatured)}
+                        required
+                    >
+                        <SelectTrigger id="isFeatured">
+                            <SelectValue placeholder="Set featured status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="true">Yes, show on homepage</SelectItem>
+                            <SelectItem value="false">No, hide from homepage</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
-            {/* --- Descriptions: Grid stacks on mobile --- */}
+            {/* Descriptions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <Label htmlFor="shortDescription">Short Description (Cart Tip) *</Label>
@@ -352,75 +369,77 @@ export default function ProductForm({ productId, categories, productData, onSave
             </div>
 
 
-            {/* --- Media/Image Section --- */}
+            {/* Media/Image Section */}
             <div className={cn("border border-dashed border-border p-4 rounded-lg space-y-4")}>
                 <h4 className="text-xl font-medium flex items-center gap-2">Product Media (Image & Video)</h4>
                 
-                {/* File Input & Upload Button (Unchanged) */}
                 <input 
                     type="file" 
                     ref={fileInputRef} 
                     onChange={handleFileUpload} 
                     style={{ display: 'none' }} 
                     accept="image/*,video/*" 
-                    multiple
                 />
                 
                 <Button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto">
                     {isUploading ? (
-                        <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading...
-                        </>
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading...</>
                     ) : (
-                        <>
-                            <Upload className="w-4 h-4 mr-2" /> Upload Media (Image/Video)
-                        </>
+                        <><Upload className="w-4 h-4 mr-2" /> Upload Media (Image/Video)</>
                     )}
                 </Button>
 
-                {/* Image List: Adjusted grid to be 2 columns on mobile, 4 on medium */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {formData.media.map((mediaItem) => (
-                        <div key={mediaItem.id} className={cn("relative group rounded-md border border-border overflow-hidden")}>
-                            {/* Conditional Display: Video or Image (Unchanged) */}
-                            {mediaItem.type === 'video' ? (
-                                <video controls muted className="w-full h-auto object-cover aspect-square">
-                                    <source src={mediaItem.url} type="video/mp4" />
-                                    Your browser does not support the video tag.
-                                </video>
-                            ) : (
-                                <img 
-                                    src={mediaItem.url || '/placeholder.png'} 
-                                    alt={mediaItem.alt} 
-                                    className="w-full h-auto object-cover aspect-square" 
+                        <div key={mediaItem.id} className={cn("rounded-md border border-border overflow-hidden bg-card")}>
+                            <div className="relative group aspect-square">
+                                {mediaItem.type === 'video' ? (
+                                    <video controls muted className="w-full h-full object-cover">
+                                        <source src={mediaItem.url} type="video/mp4" />
+                                    </video>
+                                ) : (
+                                    <img 
+                                        src={mediaItem.url || '/placeholder.png'} 
+                                        alt={mediaItem.alt} 
+                                        className="w-full h-full object-cover" 
+                                    />
+                                )}
+                                
+                                <Button 
+                                    variant="destructive" 
+                                    size="icon-sm" 
+                                    type="button" 
+                                    onClick={() => handleRemoveMedia(mediaItem.id)} 
+                                    className="absolute top-1 right-1 opacity-100"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </Button>
+                            </div>
+
+                            {/* --- NEW: ALT TEXT INPUT --- */}
+                            <div className="p-2">
+                                <Label htmlFor={`alt-${mediaItem.id}`} className="text-xs text-muted-foreground">Alt Text (SEO)</Label>
+                                <Input 
+                                    id={`alt-${mediaItem.id}`}
+                                    type="text" 
+                                    placeholder="Describe the image (e.g., Golden cutlery set)" 
+                                    value={mediaItem.alt}
+                                    onChange={(e) => handleMediaChange(mediaItem.id, 'alt', e.target.value)}
+                                    className="h-8 text-xs mt-1"
                                 />
-                            )}
-                            
-                            {/* Trash button (Unchanged) */}
-                            <Button 
-                                variant="destructive" 
-                                size="icon-sm" 
-                                type="button" 
-                                onClick={() => handleRemoveMedia(mediaItem.id)} 
-                                className="absolute top-1 right-1 opacity-100 group-hover:opacity-100 transition-opacity"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </Button>
+                            </div>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* --- Product Variants Section --- */}
+            {/* Product Variants Section */}
             <div className={cn("border border-dashed border-border p-4 rounded-lg space-y-6")}>
                 <h4 className="text-xl font-medium flex items-center gap-2">Product Variants (Sizes, Colors, etc.)</h4>
-                <p className="text-sm text-muted-foreground">Define different customizable options for this product.</p>
                 
-                {/* Variant Types List */}
                 <div className={cn("space-y-6 border border-border p-4 rounded-lg")}>
                     {formData.variantTypes.map((vt) => (
                         <div key={vt.id} className={cn("p-4 bg-muted/20 rounded-md")}>
-                            {/* Type Name Input: Full width on mobile */}
                             <div className="flex items-center gap-3 mb-4">
                                 <Input 
                                     placeholder="Variant Type Name (e.g., Color, Size)"
@@ -431,33 +450,28 @@ export default function ProductForm({ productId, categories, productData, onSave
                                     }))}
                                     className="font-semibold"
                                 />
-                                <Button variant="destructive" size="icon-sm" type="button" onClick={() => handleRemoveVariantType(vt.id)} className='flex-shrink-0'>
+                                <Button variant="destructive" size="icon-sm" type="button" onClick={() => handleRemoveVariantType(vt.id)} className='shrink-0'>
                                     <MinusCircle className="w-4 h-4" />
                                 </Button>
                             </div>
 
-                            {/* Options List */}
-                            <div className="space-y-4"> {/* Increased space-y for mobile stacking */}
+                            <div className="space-y-4">
                                 <Label className="text-sm font-medium block mb-2">Options for "{vt.name || 'Type'}"</Label>
                                 {vt.options.map((opt) => (
-                                    // CRITICAL CHANGE: Stacks elements vertically on mobile, uses flex on medium screens
                                     <div key={opt.id} className="flex flex-col md:flex-row items-stretch md:items-center gap-3 border p-3 rounded-md bg-card shadow-sm">
                                         
-                                        {/* 1. Option Value (Full Width on mobile) */}
-                                        <Input placeholder="Option Value (e.g., Red, Small)" value={opt.value} onChange={(e) => handleOptionChange(vt.id, opt.id, 'value', e.target.value)} className='flex-grow'/>
+                                        <Input placeholder="Option Value (e.g., Red, Small)" value={opt.value} onChange={(e) => handleOptionChange(vt.id, opt.id, 'value', e.target.value)} className='grow'/>
                                         
-                                        {/* 2. Price Adjustment (Full Width on mobile) */}
-                                        <div className="flex items-center w-full md:w-32 flex-shrink-0">
+                                        <div className="flex items-center w-full md:w-32 shrink-0">
                                             <span className="text-sm text-muted-foreground mr-1">Adj:</span>
                                             <Input type="number" placeholder="+/- PKR" value={opt.priceAdjustment} onChange={(e) => handleOptionChange(vt.id, opt.id, 'priceAdjustment', e.target.value)}/>
                                         </div>
                                         
-                                        {/* 3. Linked Media Selector (Full Width on mobile) */}
                                         <Select
                                             value={opt.linkedMediaId ? String(opt.linkedMediaId) : 'null'}
                                             onValueChange={(value) => handleOptionChange(vt.id, opt.id, 'linkedMediaId', value === 'null' ? null : Number(value))}
                                         >
-                                            <SelectTrigger className="w-full md:w-[140px] h-9 flex-shrink-0">
+                                            <SelectTrigger className="w-full md:w-[140px] h-9 shrink-0">
                                                 <ImageIcon className='w-4 h-4 mr-2' />
                                                 <SelectValue placeholder="Link Media" />
                                             </SelectTrigger>
@@ -471,8 +485,7 @@ export default function ProductForm({ productId, categories, productData, onSave
                                             </SelectContent>
                                         </Select>
 
-                                        {/* 4. Delete Button (Fixed size) */}
-                                        <Button variant="destructive" size="icon-sm" type="button" onClick={() => handleRemoveVariantOption(vt.id, opt.id)} className='flex-shrink-0 self-start md:self-center'>
+                                        <Button variant="destructive" size="icon-sm" type="button" onClick={() => handleRemoveVariantOption(vt.id, opt.id)} className='shrink-0 self-start md:self-center'>
                                             <Trash2 className="w-4 h-4" />
                                         </Button>
                                     </div>

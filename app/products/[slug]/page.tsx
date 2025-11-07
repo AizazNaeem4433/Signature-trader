@@ -1,443 +1,196 @@
-/* eslint-disable no-alert, quotes */
-"use client";
+// signature-trader/app/products/[slug]/page.tsx
 
-import { useEffect, useState, useMemo } from 'react';
-import { db } from '@/lib/firebase';
+import { type Metadata, type ResolvingMetadata } from 'next';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { Loader2, ShoppingCart, ArrowRight, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
-import { useParams } from 'next/navigation'; 
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { db } from '@/lib/firebase';
+import ProductDetailClient from './product-details';
+import { ProductData } from './product-details'; 
+import { XCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label'; 
-import ProductCard from '@/components/storefront/ProductCard'; 
-import { useCartStore } from '@/lib/store/useCartStore'; // <-- FIX: IMPORT CART STORE
-import { useNotificationStore } from '@/lib/store/useNotificationStore'; // Import Notification Store
+import { cn } from '@/lib/utils';
+import { notFound } from 'next/navigation';
+import { WithContext, Product } from 'schema-dts'; 
 
-// --- INTERFACES ---
-interface ProductMedia { id: number; url: string; alt: string; type: 'image' | 'video'; }
-interface VariantOption { id: number; value: string; priceAdjustment: number; linkedMediaId: number | null; }
-interface VariantType { id: number; name: string; options: VariantOption[]; }
-interface ProductData {
-    id: string;
-    name: string;
-    slug: string;
-    basePrice: number;
-    cutPrice: number;
-    shortDescription: string;
-    detailedDescription: string;
-    stock: number;
-    media: ProductMedia[];
-    variantTypes: VariantType[];
-    category_id: string;
-    isActive: boolean;
-}
-interface PriceCalculation {
-    finalPrice: number;
-    totalAdjustment: number;
-    currentStock: number;
-    linkedMedia: ProductMedia | undefined;
+
+
+type Props = {
+  params: { slug: string }
 }
 
+export async function generateMetadata(
+  { params }: Props,
+  _parent: ResolvingMetadata
+): Promise<Metadata> {
+  
+  const awaitedParams = await params;
+  const slug = awaitedParams.slug;
+  
+  if (!slug || slug === 'favicon.ico') { 
+    return { title: "Not Found" }; 
+  }
 
-export default function ProductDetailPage() {
-    const params = useParams();
-    const productSlug = params.slug as string; 
-    
-    const [product, setProduct] = useState<ProductData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [mainMedia, setMainMedia] = useState<ProductMedia | null>(null);
-    const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
-    const [quantity, setQuantity] = useState(1);
-    const [relatedProducts, setRelatedProducts] = useState<ProductData[]>([]); 
-
-    // Cart and Notification Stores
-    const { addItem: addToCart } = useCartStore(); // <-- Get Cart Action
-    const { addNotification } = useNotificationStore(); 
-
-    // --- UTILITY: Dynamic Color Class Generator ---
-    const getColorClass = (colorName: string): string => {
-        const name = colorName.toLowerCase();
-        if (name.includes('red')) return 'bg-red-600';
-        if (name.includes('blue')) return 'bg-blue-600';
-        if (name.includes('green')) return 'bg-green-600';
-        if (name.includes('yellow') || name.includes('gold')) return 'bg-[#FFCE00]';
-        if (name.includes('black')) return 'bg-black';
-        if (name.includes('white')) return 'bg-white border border-gray-300';
-        return 'bg-gray-400';
-    };
-
-    // --- 1. Fetch Single Product Data by Slug & Related Products (unchanged) ---
-    useEffect(() => {
-        const productSlug = params.slug; 
-        if (!productSlug || typeof productSlug !== 'string') {
-             setLoading(false);
-             return;
-        }
-
-        const fetchProductAndRelated = async () => {
-            setLoading(true);
-            try {
-                // Fetch Main Product
-                const q = query(
-                    collection(db, 'products'), 
-                    where('slug', '==', productSlug), 
-                    where('isActive', '==', true), 
-                    limit(1)
-                );
-                const snapshot = await getDocs(q);
-
-                if (snapshot.empty) { setError("Product not found or is inactive."); setLoading(false); return; }
-
-                const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as ProductData;
-                setProduct(data);
-                if (data.media.length > 0) { setMainMedia(data.media[0]); }
-                
-                const initialSelections: Record<string, string> = {};
-                data.variantTypes.forEach((vt: VariantType) => { 
-                    if (vt.options.length > 0) { initialSelections[vt.name] = vt.options[0].value; }
-                });
-                setSelectedVariants(initialSelections);
-
-                // Fetch Related Products
-                if (data.category_id) {
-                    const relatedQuery = query(
-                        collection(db, 'products'),
-                        where('category_id', '==', data.category_id),
-                        where('slug', '!=', data.slug), 
-                        where('isActive', '==', true),
-                        limit(4) 
-                    );
-                    const relatedSnapshot = await getDocs(relatedQuery);
-                    setRelatedProducts(relatedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductData)));
-                }
-
-            } catch (e) {
-                console.error("Error fetching product:", e);
-                setError("An error occurred while loading the product.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchProductAndRelated();
-    }, [params.slug]); 
-
-    // --- 2. Dynamic Price & Media Calculation (unchanged) ---
-    const priceData: PriceCalculation = useMemo(() => {
-        if (!product) return { finalPrice: 0, totalAdjustment: 0, currentStock: 0, linkedMedia: undefined };
-
-        let adjustment = 0;
-        let linkedMediaId: number | null = null;
-        let stock = product.stock; 
-        
-        product.variantTypes.forEach((vt: VariantType) => {
-            const selectedValue = selectedVariants[vt.name];
-            const selectedOption = vt.options.find((opt: VariantOption) => opt.value === selectedValue);
-            
-            if (selectedOption) {
-                adjustment += selectedOption.priceAdjustment;
-                
-                if (selectedOption.linkedMediaId !== null) {
-                    linkedMediaId = selectedOption.linkedMediaId;
-                }
-            }
-        });
-
-        const currentLinkedMedia = linkedMediaId !== null ? product.media.find(m => m.id === linkedMediaId) : undefined;
-
-        return {
-            finalPrice: product.basePrice + adjustment,
-            totalAdjustment: adjustment,
-            currentStock: stock,
-            linkedMedia: currentLinkedMedia, 
-        };
-    }, [product, selectedVariants]);
-
-    // --- 3. Separate Effect for Image Switching based on Variants (unchanged) ---
-    useEffect(() => {
-        if (priceData.linkedMedia && mainMedia?.id !== priceData.linkedMedia.id) {
-            setMainMedia(priceData.linkedMedia);
-        } else if (!priceData.linkedMedia && product && product.media.length > 0 && mainMedia?.id !== product.media[0].id) {
-            setMainMedia(product.media[0]);
-        }
-    }, [product, priceData.linkedMedia, mainMedia]);
-    
-    
-    // --- 4. Add To Cart Logic ---
-    const handleAddToCart = () => {
-        if (!product || quantity <= 0 || quantity > priceData.currentStock) {
-            addNotification("Please select a valid quantity and ensure the item is in stock.", "error");
-            return;
-        }
-        
-        // Prepare the item data structure
-        const cartItem = {
-            productId: product.id,
-            name: product.name,
-            slug: product.slug,
-            basePrice: priceData.finalPrice, // Use the dynamically calculated final price
-            quantity: quantity,
-            selectedVariants: selectedVariants,
-            mediaUrl: product.media[0]?.url || '/placeholder.png' // Use the default media for the cart thumbnail
-        };
-        
-        // Add item to the global cart store. This action will now automatically open the CartSidebar.
-        addToCart(cartItem); 
-        
-        // No explicit notification needed, as addItem now opens the CartSidebar.
-    };
-
-    const handleVariantClick = (vtName: string, optValue: string) => {
-        // Sets selected variant and triggers price/media update via useMemo/useEffect
-        setSelectedVariants(prev => ({ ...prev, [vtName]: optValue }));
-    };
-
-
-    // Separate Variant Render (To use swatches/buttons)
-    const renderVariantSelector = (vt: VariantType) => {
-        const isColorSwatch = vt.name.toLowerCase().includes('color') || vt.name.toLowerCase().includes('colour');
-        
-        return (
-            <div key={vt.name} className={cn("space-y-2")}>
-                <Label className={cn("text-sm font-medium block")}>
-                    {vt.name}: <span className={cn("font-semibold text-foreground")}>{selectedVariants[vt.name]}</span>
-                </Label>
-                
-                <div className={cn("flex flex-wrap gap-2")}>
-                    {vt.options.map((opt) => {
-                        const isSelected = selectedVariants[vt.name] === opt.value;
-                        
-                        if (isColorSwatch) {
-                            // Render as Color Swatch
-                            const colorClass = getColorClass(opt.value);
-                            return (
-                                <motion.button
-                                    key={opt.id}
-                                    whileTap={{ scale: 0.95 }}
-                                    title={opt.value}
-                                    onClick={() => handleVariantClick(vt.name, opt.value)}
-                                    className={cn(
-                                        "w-8 h-8 rounded-full border-2 transition-all shadow-md",
-                                        colorClass,
-                                        { 
-                                            // Highlight effect for the selected swatch
-                                            "ring-4 ring-offset-2 ring-[#FFCE00]": isSelected,
-                                            "hover:ring-2 hover:ring-gray-400": !isSelected,
-                                            "bg-gray-200 border-gray-400": colorClass.includes('bg-white'), // Ensure white swatches have a visible border
-                                        }
-                                    )}
-                                />
-                            );
-                        } else {
-                            // Render as Button/Swatch for Size, Quantity, etc.
-                            return (
-                                <motion.button
-                                    key={opt.id}
-                                    whileTap={{ scale: 0.95 }}
-                                    onClick={() => handleVariantClick(vt.name, opt.value)}
-                                    className={cn(
-                                        "px-4 py-1.5 rounded-md text-sm font-medium border transition-all",
-                                        {
-                                            "bg-red-600 text-white border-red-600 shadow-sm": isSelected,
-                                            "bg-background text-foreground hover:bg-muted/50 dark:border-gray-700": !isSelected,
-                                        }
-                                    )}
-                                >
-                                    {opt.value}
-                                </motion.button>
-                            );
-                        }
-                    })}
-                </div>
-            </div>
-        );
-    };
-
-    // --- Final Render Setup ---
-    if (loading) {
-        return (
-            <div className={cn("min-h-screen flex items-center justify-center")}>
-                <Loader2 className={cn("w-8 h-8 animate-spin text-[#FFCE00]")} />
-            </div>
-        );
-    }
-    
-    if (error || !product) {
-        return (
-            <div className={cn("min-h-screen flex flex-col items-center justify-center p-8 text-center")}>
-                <XCircle className={cn("w-12 h-12 text-red-500 mb-4")} />
-                <h1 className={cn("text-2xl font-bold mb-2")}>Error 404: Product Not Found</h1>
-                <p className={cn("text-muted-foreground")}>{error || "The requested product does not exist or is unavailable."}</p>
-                <Link href="/products" className={cn("mt-6 text-red-600 hover:underline flex items-center gap-1")}>
-                    Back to all products <ArrowRight className={cn('w-4 h-4')} />
-                </Link>
-            </div>
-        );
-    }
-
-    const displayCutPrice = product.cutPrice && product.cutPrice > product.basePrice 
-        ? product.cutPrice.toLocaleString('en-PK', { style: 'currency', currency: 'PKR', minimumFractionDigits: 0 }) 
-        : null;
-        
-    const displayFinalPrice = priceData.finalPrice.toLocaleString('en-PK', { style: 'currency', currency: 'PKR', minimumFractionDigits: 0 });
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className={cn("max-w-7xl mx-auto px-6 py-12 min-h-screen")}
-        >
-            <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-12")}>
-                
-                {/* --- LEFT: Media Gallery --- */}
-                <div className={cn("space-y-6")}>
-                    {/* Main Viewer */}
-                    <div className={cn("aspect-square rounded-xl overflow-hidden bg-muted/50 shadow-xl")}>
-                        {mainMedia && mainMedia.type === 'video' ? (
-                             <video controls autoPlay muted loop className={cn("w-full h-full object-cover")}>
-                                <source src={mainMedia.url} type="video/mp4" />
-                                Your browser does not support the video tag.
-                             </video>
-                        ) : (
-                            <img 
-                                src={mainMedia?.url || '/placeholder.png'} 
-                                alt={mainMedia?.alt || product.name} 
-                                className={cn("w-full h-full object-cover")}
-                            />
-                        )}
-                    </div>
-                    
-                    {/* Thumbnail Selector */}
-                    <div className={cn("flex gap-3 overflow-x-auto pb-2")}>
-                        {product.media.map((mediaItem) => (
-                            <motion.div 
-                                key={mediaItem.id}
-                                whileHover={{ scale: 1.05 }}
-                                className={cn(
-                                    "w-20 h-20 shrink-0 rounded-lg overflow-hidden border-2 cursor-pointer transition-colors",
-                                    mainMedia?.id === mediaItem.id ? "border-[#FFCE00]" : "border-transparent hover:border-gray-300"
-                                )}
-                                onClick={() => setMainMedia(mediaItem)}
-                            >
-                                {mediaItem.type === 'video' ? (
-                                    <video muted className={cn("w-full h-full object-cover")} src={mediaItem.url} />
-                                ) : (
-                                    <img src={mediaItem.url} alt={mediaItem.alt} className={cn("w-full h-full object-cover")} />
-                                )}
-                            </motion.div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* --- RIGHT: Details and Purchase --- */}
-                <div className={cn("space-y-8")}>
-                    <div className={cn("border-b border-border pb-4")}>
-                        <h1 className={cn("text-3xl font-extrabold text-foreground mb-2")}>{product.name}</h1>
-                        <p className={cn("text-lg text-muted-foreground")}>{product.shortDescription}</p>
-                    </div>
-
-                    {/* Pricing */}
-                    <div className={cn("space-y-1")}>
-                        {displayCutPrice && (
-                             <p className={cn("text-xl text-gray-500 line-through")}>
-                                {displayCutPrice}
-                            </p>
-                        )}
-                        <p className={cn("text-4xl font-extrabold text-red-600 flex items-baseline gap-2")}>
-                            {displayFinalPrice}
-                            {/* Access totalAdjustment property from priceData */}
-                            {priceData.totalAdjustment !== 0 && (
-                                <span className={cn("text-base font-semibold text-gray-500")}>
-                                    ({priceData.totalAdjustment > 0 ? '+' : ''}{priceData.totalAdjustment.toLocaleString()} Adj)
-                                </span>
-                            )}
-                        </p>
-                    </div>
-
-                    {/* Variant Selection (Custom Buttons/Swatches) */}
-                    <div className={cn("space-y-4 pt-4")}>
-                        {product.variantTypes.map((vt) => renderVariantSelector(vt))}
-                    </div>
-                    
-                    {/* Stock and Quantity */}
-                    <div className={cn("flex items-center gap-6 pt-4")}>
-                        <Label>Quantity:</Label>
-                        <Input
-                            type="number"
-                            min="1"
-                            // Access currentStock property from priceData
-                            max={priceData.currentStock}
-                            value={quantity}
-                            onChange={(e) => setQuantity(Number(e.target.value))}
-                            className={cn("w-20 text-center")}
-                        />
-                        <span className={cn("text-sm font-medium", priceData.currentStock > 0 ? "text-green-600" : "text-red-600")}>
-                            {priceData.currentStock > 0 ? `${priceData.currentStock} in stock` : "Out of Stock"}
-                        </span>
-                    </div>
-
-                    {/* Add to Cart Button */}
-                    <Button
-                        onClick={handleAddToCart}
-                        // Access currentStock property from priceData
-                        disabled={priceData.currentStock <= 0 || quantity > priceData.currentStock}
-                        className={cn("w-full md:w-96 mt-6 bg-[#FFCE00] hover:bg-[#e6b800] text-black text-lg font-bold shadow-md")}
-                    >
-                        <ShoppingCart className={cn("w-5 h-5 mr-3")} /> Add to Cart
-                    </Button>
-                    
-                    {/* Detailed Description */}
-                    <div className={cn("pt-6 border-t border-border mt-8")}>
-                        <h3 className={cn("text-xl font-semibold mb-3")}>Product Details</h3>
-                        <p className={cn("text-muted-foreground leading-relaxed whitespace-pre-wrap")}>
-                            {product.detailedDescription}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {/* --- Related Products Section --- */}
-            {relatedProducts.length > 0 && (
-                <section className={cn("mt-20")}>
-                    <motion.h2
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        viewport={{ once: true }}
-                        className={cn("text-3xl font-bold mb-8 text-foreground text-center")}
-                    >
-                        You May Also Like
-                    </motion.h2>
-                    
-                    <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6")}>
-                        {relatedProducts.map((p) => (
-                            <ProductCard
-                                key={p.id}
-                                id={p.id} // <-- PASS ID
-                                slug={p.slug}
-                                name={p.name}
-                                basePrice={p.basePrice}
-                                cutPrice={p.cutPrice}
-                                shortDescription={p.shortDescription}
-                                media={p.media}
-                                variantTypes={p.variantTypes}
-                            />
-                        ))}
-                    </div>
-                </section>
-            )}
-        </motion.div>
+  try {
+    const q = query(
+        collection(db, 'products'), 
+        where('slug', '==', slug), 
+        where('isActive', '==', true), 
+        limit(1)
     );
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      return { title: 'Product Not Found' }
+    }
+
+    const product = snapshot.docs[0].data() as ProductData;
+
+    const title = `${product.name} | Signature Trader`;
+    const description = product.shortDescription;
+    const imageUrl = product.media[0]?.url || '/signature-logo.png'; 
+
+    return {
+      title: title,
+      description: description,
+      openGraph: { 
+        title: title,
+        description: description,
+        images: [{ url: imageUrl, width: 1200, height: 630, alt: product.name }], // 1200x630 ratio
+        siteName: 'Signature Trader',
+      },
+      twitter: { 
+        card: 'summary_large_image',
+        title: title,
+        description: description,
+        images: [imageUrl],
+      },
+    }
+  } catch (error) {
+    console.error(`Error fetching metadata for slug: ${slug}`, error);
+    return {
+      title: 'Error | Signature Trader',
+      description: 'Could not load product details.',
+    }
+  }
+}
+
+
+async function getProductBySlug(slug: string): Promise<ProductData | null> {
+  if (!slug || slug === 'favicon.ico') {
+    return null; 
+  }
+  
+  try {
+    const q = query(
+        collection(db, 'products'), 
+        where('slug', '==', slug),
+        where('isActive', '==', true), 
+        limit(1)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+
+    const plainProduct: ProductData = {
+      id: doc.id,
+      name: data.name,
+      slug: data.slug,
+      basePrice: data.basePrice,
+      cutPrice: data.cutPrice || 0,
+      shortDescription: data.shortDescription,
+      detailedDescription: data.detailedDescription,
+      stock: data.stock,
+      media: data.media || [],
+      variantTypes: data.variantTypes || [],
+      category_id: data.category_id,
+      isActive: data.isActive
+    };
+
+    return plainProduct;
+
+  } catch (error) {
+    console.error(`getProductBySlug Error (slug: ${slug}):`, error);
+    return null; 
+  }
+}
+
+async function getRelatedProducts(categoryId: string, currentSlug: string): Promise<ProductData[]> {
+  if (!categoryId) return [];
+  try {
+    const relatedQuery = query(
+        collection(db, 'products'),
+        where('category_id', '==', categoryId),
+        where('slug', '!=', currentSlug), 
+        where('isActive', '==', true),
+        limit(4) 
+    );
+    const relatedSnapshot = await getDocs(relatedQuery);
+
+    return relatedSnapshot.docs.map(doc => {
+        const data = doc.data();
+        const plainProduct: ProductData = {
+          id: doc.id,
+          name: data.name,
+          slug: data.slug,
+          basePrice: data.basePrice,
+          cutPrice: data.cutPrice || 0,
+          shortDescription: data.shortDescription,
+          detailedDescription: data.detailedDescription,
+          stock: data.stock,
+          media: data.media || [],
+          variantTypes: data.variantTypes || [],
+          category_id: data.category_id,
+          isActive: data.isActive
+        };
+        return plainProduct;
+    });
+
+  } catch (error) {
+      console.error("Failed to fetch related products:", error);
+      return [];
+  }
+}
+
+export default async function ProductPage({ params }: Props) {
+  
+  const awaitedParams = await params; 
+  const slug = awaitedParams.slug;
+
+  const product = await getProductBySlug(slug);
+
+  if (!product) {
+    notFound(); 
+  }
+
+  const relatedProducts = await getRelatedProducts(product.category_id, product.slug);
+
+  // JSON-LD Structured Data
+  const productJsonLd: WithContext<Product> = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    description: product.shortDescription,
+    image: product.media[0]?.url || '/signature-logo.png',
+    sku: product.id,
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'PKR',
+      price: product.basePrice.toString(),
+      url: `https://signature-trader.com/products/${product.slug}`,
+      availability: product.stock > 0 
+          ? 'https://schema.org/InStock' 
+          : 'https://schema.org/OutOfStock',
+    },
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
+      <ProductDetailClient product={product} relatedProducts={relatedProducts} />
+    </>
+  );
 }
