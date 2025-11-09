@@ -1,7 +1,6 @@
 // signature-trader/app/cart/page.tsx
 "use client";
 
-import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, ArrowRight, Trash2, Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,7 +22,7 @@ const getCartItemKey = (productId: string, variants: Record<string, string>): st
 
 export default function CartPage() {
     // Fetch state and actions from the global store
-    const { items, subtotal, total, taxRate, updateQuantity, removeItem, clearCart } = useCartStore();
+    const { items, subtotal, total, updateQuantity, removeItem, clearCart, discountAmount, promoCode } = useCartStore();
     const { addNotification } = useNotificationStore();
 
     // Handler to remove all items from cart
@@ -34,9 +33,14 @@ export default function CartPage() {
         }
     };
     
-    // Constant for shipping cost (since it's fixed for COD example)
-    const SHIPPING_COST = 250;
-    const finalOrderTotal = total + SHIPPING_COST;
+    // Constant for shipping cost 
+    // FIX: Shipping Cost must be 0 here
+    const SHIPPING_COST = 0; 
+    // Total already includes the discount (subtotal - discountAmount + tax) from the store.
+    const finalOrderTotal = total + SHIPPING_COST; 
+    
+    // Helper to format currency consistently (PKR)
+    const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString('en-PK', { minimumFractionDigits: 0 })}`;
 
     return (
         <main className="max-w-7xl mx-auto px-6 py-12 min-h-screen">
@@ -79,21 +83,21 @@ export default function CartPage() {
                                         className="flex border border-border p-4 rounded-xl bg-card shadow-sm items-center"
                                     >
                                         {/* Item Image */}
-                                        <div className="w-24 h-24 flex-shrink-0 overflow-hidden rounded-md mr-4">
+                                        <div className="w-24 h-24 shrink-0 overflow-hidden rounded-md mr-4">
                                             <img src={item.mediaUrl} alt={item.name} className="w-full h-full object-cover" />
                                         </div>
 
                                         {/* Details */}
-                                        <div className="flex-grow min-w-0">
+                                        <div className="grow min-w-0">
                                             <Link href={`/products/${item.slug}`} className="text-lg font-semibold hover:text-[#FFCE00] transition-colors line-clamp-1">
                                                 {item.name}
                                             </Link>
                                             <p className="text-xs text-muted-foreground mb-1 truncate">{variantString}</p>
                                             <p className="text-sm font-medium text-red-600">
-                                                PKR {(item.totalPrice * item.quantity).toLocaleString()}
+                                                {formatCurrency(item.totalPrice * item.quantity)}
                                             </p>
                                             <p className="text-xs text-gray-500">
-                                                @ PKR {item.totalPrice.toLocaleString()} each
+                                                @ {formatCurrency(item.totalPrice)} each
                                             </p>
                                         </div>
 
@@ -128,7 +132,7 @@ export default function CartPage() {
                                             variant="destructive" 
                                             size="icon" 
                                             onClick={() => removeItem(item.productId, itemKey)}
-                                            className="flex-shrink-0"
+                                            className="shrink-0"
                                         >
                                             <Trash2 className="w-5 h-5" />
                                         </Button>
@@ -152,12 +156,19 @@ export default function CartPage() {
                         <h2 className="text-2xl font-bold mb-4">Order Summary</h2>
                         
                         <div className="space-y-2 border-b border-border pb-4">
-                            <SummaryRow label="Subtotal" value={`PKR ${subtotal.toLocaleString()}`} />
-                            <SummaryRow label={`Tax (${taxRate * 100}%)`} value={`PKR ${(subtotal * taxRate).toLocaleString()}`} />
-                            <SummaryRow label="Shipping" value={`PKR ${SHIPPING_COST.toLocaleString()}`} /> 
+                            
+                            <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
+                            
+                            {promoCode && (
+                                <SummaryRow label={`Discount (${promoCode})`} value={`-${formatCurrency(discountAmount)}`} isPlaceholder />
+                            )}
+                            
+                            {/* REMOVED TAX ROW */}
+                            
+                            <SummaryRow label="Shipping" value={`FREE`} isPlaceholder={SHIPPING_COST === 0} /> 
                         </div>
                         
-                        <SummaryRow label="Order Total" value={`PKR ${finalOrderTotal.toLocaleString()}`} isTotal />
+                        <SummaryRow label="Order Total" value={formatCurrency(finalOrderTotal)} isTotal />
                         
                         <Link 
                             href="/checkout" 

@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendEmailVerification // <-- NAYA IMPORT
 } from "firebase/auth";
 import { auth, createUserProfileDocument, db } from "@/lib/firebase"; 
 import { doc, getDoc } from 'firebase/firestore';
@@ -45,18 +46,23 @@ export default function EmailPasswordForm({
       let userCredential;
 
       if (isSignUp) {
-        // Validation check for full name during signup
         if (!fullName.trim()) {
             throw new Error('auth/missing-full-name');
         }
 
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        // PASS FULL NAME to the profile document creation
+        
+        // --- NAYA CODE: Verification email send karein ---
+        // Profile document bananay se pehle email bhej dein
+        await sendEmailVerification(userCredential.user);
+        // --- NAYA CODE END ---
+
         await createUserProfileDocument(userCredential.user, { displayName: fullName.trim() });
-        addNotification(`Welcome, ${fullName.trim()}! Account created successfully.`, "success"); // <-- Personalized Notification
+        
+        // Notification ko update karein
+        addNotification(`Welcome, ${fullName.trim()}! A verification email has been sent.`, "success"); 
 
       } else {
-        // --- SIGN IN VALIDATION CHECK ---
         userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
@@ -68,11 +74,10 @@ export default function EmailPasswordForm({
           throw new Error('auth/user-profile-missing');
         }
         
-        // Fetch display name from Firestore for notification
         const userData = userDoc.data() as { displayName?: string };
         const name = userData.displayName || user.displayName || 'User';
 
-        addNotification(`Signed in successfully! Welcome back, ${name}.`, "success"); // <-- Personalized Sign In Notification
+        addNotification(`Signed in successfully! Welcome back, ${name}.`, "success");
       }
       
       router.push(redirectPath);
@@ -119,7 +124,6 @@ export default function EmailPasswordForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* NEW FULL NAME INPUT - Only visible in Sign Up mode */}
       <div className={isSignUp ? '' : 'hidden'}>
         <Label htmlFor="fullName">Full Name</Label>
         <Input
@@ -128,12 +132,11 @@ export default function EmailPasswordForm({
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="e.g., John Doe"
-          required={isSignUp} // Make required only for sign up
+          required={isSignUp} 
           className="mt-1"
         />
       </div>
 
-      {/* Email Input */}
       <div>
         <Label htmlFor="email">Email</Label>
         <Input
@@ -147,7 +150,6 @@ export default function EmailPasswordForm({
         />
       </div>
 
-      {/* Password Input */}
       <div>
         <Label htmlFor="password">Password</Label>
         <Input
@@ -161,14 +163,12 @@ export default function EmailPasswordForm({
         />
       </div>
 
-      {/* Error Message */}
       {error && (
         <p className="text-sm text-destructive font-medium bg-destructive/10 p-2 rounded-md border border-destructive/30">
           {error}
         </p>
       )}
 
-      {/* Submit Button */}
       <Button
         type="submit"
         disabled={loading}
@@ -181,7 +181,6 @@ export default function EmailPasswordForm({
         )}
       </Button>
       
-      {/* Toggle Link */}
       <p className="text-center text-sm text-muted-foreground">
         {isSignUp
           ? "Already have an account?"

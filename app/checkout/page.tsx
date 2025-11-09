@@ -13,10 +13,11 @@ import { useCartStore } from '@/lib/store/useCartStore';
 import { useAuthStore } from '@/lib/store/useAuthStore';
 import { useNotificationStore } from '@/lib/store/useNotificationStore';
 import { db } from '@/lib/firebase';
-// --- NAYA CODE: 'updateDoc' aur 'increment' ko import karein ---
 import { doc, getDoc, collection, addDoc, updateDoc, increment } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+// NEW: Import promo logic helper
+import { getValidPromoCodeByCode } from '@/lib/firestore-helpers/promo-logic';
 
 // Interface for user profile data fetched from Firestore
 interface UserProfileDetails {
@@ -27,23 +28,26 @@ interface UserProfileDetails {
 }
 
 // Helper component for Summary Rows
-function SummaryRow({ label, value, isTotal = false }: { label: string; value: string; isTotal?: boolean; }) {
-  return (
-    <div className={cn("flex justify-between")}>
-      <span className={cn("text-sm", { "font-semibold text-lg text-red-600": isTotal })}>{label}</span>
-      <span className={cn("font-medium", { "font-extrabold text-red-600 text-lg": isTotal })}>{value}</span>
-    </div>
-  );
+function SummaryRow({ label, value, isTotal = false, isPlaceholder = false }: { label: string; value: string; isTotal?: boolean; isPlaceholder?: boolean }) {
+    return (
+        <div className={cn("flex justify-between")}>
+            <span className={cn("text-sm", { "font-semibold text-lg text-red-600": isTotal, "text-muted-foreground italic": isPlaceholder })}>{label}</span>
+            <span className={cn("font-medium", { "font-extrabold text-red-600 text-lg": isTotal, "font-semibold text-green-600": label.includes('Discount'), "text-muted-foreground italic": isPlaceholder })}>{value}</span>
+        </div>
+    );
 }
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, subtotal, taxRate } = useCartStore(); 
+  // FIX: Import discount and promo state/actions
+  const { items, subtotal, total, taxRate, promoCode, discountAmount, applyPromoCode, removePromoCode } = useCartStore(); 
   const { user: authUser, isLoggedIn, isInitialized } = useAuthStore();
   const { addNotification } = useNotificationStore();
 
-  const SHIPPING_COST = 250;
-  const finalOrderTotal = subtotal + SHIPPING_COST; 
+  // FIX: Set SHIPPING_COST to 0 (Free Shipping)
+  const SHIPPING_COST = 0; 
+  // FIX: Final total comes directly from store.total + SHIPPING_COST
+  const finalOrderTotal = total + SHIPPING_COST; 
 
   const [shippingDetails, setShippingDetails] = useState({
     fullName: authUser?.displayName || '',
@@ -53,8 +57,17 @@ export default function CheckoutPage() {
   });
   const [loadingData, setLoadingData] = useState(true);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  
+  // NEW: Promo Code State
+  const [promoInput, setPromoInput] = useState(promoCode || '');
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
 
-  // Route Protection & Prefill
+  // Helper to format currency consistently (PKR)
+  const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString('en-PK', { minimumFractionDigits: 0 })}`;
+
+
+  // Route Protection & Prefill (Unchanged)
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (loadingData) {
@@ -99,8 +112,55 @@ export default function CheckoutPage() {
     const { name, value } = e.target;
     setShippingDetails(prev => ({ ...prev, [name]: value }));
   };
+  
+  // NEW: Promo Code Application Handler
+  const handleApplyPromo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPromoError(null);
+    if (!promoInput.trim()) {
+        removePromoCode();
+        addNotification("Promo code removed.", "info");
+        return;
+    }
+    
+    setIsApplyingPromo(true);
 
-  // Submit Order
+    try {
+        // Use subtotal for minOrder check
+        const validCoupon = await getValidPromoCodeByCode(promoInput, subtotal);
+
+        if (!validCoupon) {
+            setPromoError("Invalid, expired, or minimum order not met.");
+            removePromoCode();
+            addNotification("Invalid promo code.", "error");
+            return;
+        }
+
+        let discount = 0;
+        if (validCoupon.type === 'percent') {
+            discount = subtotal * (validCoupon.value / 100);
+            discount = Math.min(discount, subtotal); // Max discount is subtotal
+        } else {
+            discount = validCoupon.value; // Fixed amount
+            discount = Math.min(discount, subtotal); // Max discount is subtotal
+        }
+        
+        // Apply the discount to the global state
+        applyPromoCode(validCoupon.code, discount);
+        setPromoInput(validCoupon.code); // Ensure input reflects applied code
+        addNotification(`Applied promo code ${validCoupon.code}! Saved ${formatCurrency(discount)}.`, "success");
+
+    } catch (error) {
+        console.error("Promo application failed:", error);
+        setPromoError("Failed to verify code. Try again.");
+        removePromoCode();
+    } finally {
+        setIsApplyingPromo(false);
+    }
+  };
+
+
+  // Submit Order (updated to use discount/correct total)
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isPlacingOrder || items.length === 0 || !authUser) return;
@@ -118,34 +178,35 @@ export default function CheckoutPage() {
           productId: item.productId, // Product ID ko yahan save karein
           name: item.name,
           quantity: item.quantity,
-          price: item.totalPrice, // Yeh price per item hai
+          price: item.totalPrice, // Yeh price per item hai (after variant adjustments)
           variants: item.selectedVariants,
         })),
-        subtotal,
-        tax_amount: subtotal * taxRate,
-        shipping_cost: SHIPPING_COST,
-        total_amount: finalOrderTotal,
+        subtotal, // Subtotal (sum of item prices)
+        tax_amount: subtotal * taxRate, // FIX: This is now 0 * subtotal
+        shipping_cost: SHIPPING_COST, // FIX: This is now 0
+        total_amount: finalOrderTotal, 
         payment_method: 'Cash on Delivery',
         status: 'pending',
         created_at: new Date().toISOString(),
+        // NEW: Save promo code and discount
+        promo_code: promoCode,
+        discount_amount: discountAmount,
       };
 
       // 1. Order ko database mein save karein
       const addedDoc = await addDoc(collection(db, 'orders'), orderDoc);
       const orderId = addedDoc.id;
 
-      // --- NAYA CODE: Stock Deduction Logic ---
-      // 2. Har item ke stock ko update karein
+      // 2. Har item ke stock ko update karein (Atomic update)
       for (const item of orderDoc.items) {
         const productRef = doc(db, 'products', item.productId);
         
-        // 'increment' function istemal karein taake stock atomically update ho
-        // Hum 'quantity' ko negative number ke taur par increment karein gay (stock - quantity)
         await updateDoc(productRef, {
           stock: increment(-item.quantity)
         });
       }
-      // --- NAYA CODE END ---
+
+      // REMOVED FIX: Clear cart is now handled ONLY on the success page to prevent redirect race condition
 
       addNotification(`Order placed successfully! Order ID: ${orderId.slice(-8)}`, "success");
       
@@ -185,7 +246,7 @@ export default function CheckoutPage() {
       </motion.h1>
 
       <div className={cn("grid grid-cols-1 lg:grid-cols-5 gap-8")}>
-        {/* LEFT: Shipping Form */}
+        {/* LEFT: Shipping Form (Unchanged) */}
         <div className={cn("lg:col-span-3 bg-card p-6 rounded-xl shadow-lg border border-border")}>
           <h2 className={cn("text-2xl font-bold mb-6 text-red-600")}>1. Shipping Information</h2>
 
@@ -242,22 +303,67 @@ export default function CheckoutPage() {
                 <img src={item.mediaUrl} alt={item.name} className={cn("w-12 h-12 rounded-md object-cover shrink-0")} />
                 <div className={cn("grow")}>
                   <p className={cn("text-sm font-medium line-clamp-1")}>{item.name}</p>
-                  <p className={cn("text-xs text-muted-foreground")}>{item.quantity} x {item.totalPrice.toLocaleString()}</p>
+                  <p className={cn("text-xs text-muted-foreground")}>{item.quantity} x {formatCurrency(item.totalPrice)}</p>
                 </div>
                 <p className={cn("text-sm font-semibold text-foreground")}>
-                  PKR {(item.totalPrice * item.quantity).toLocaleString()}
+                  {formatCurrency(item.totalPrice * item.quantity)}
                 </p>
               </div>
             ))}
           </div>
 
-          <div className={cn("space-y-2 border-y border-border py-4 mt-4")}>
-            <SummaryRow label="Subtotal" value={`PKR ${subtotal.toLocaleString()}`} />
-            <SummaryRow label="Shipping" value={`PKR ${SHIPPING_COST.toLocaleString()}`} /> 
+          
+          {/* NEW: Promo Code Area */}
+          <div className={cn("pt-4 border-t border-border")}>
+            <form onSubmit={handleApplyPromo} className={cn("flex gap-2")}>
+                <Input
+                    type="text"
+                    placeholder={promoCode || "Enter promo code"}
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    className={cn("h-10")}
+                />
+                <Button 
+                    type="submit" 
+                    variant={promoCode ? 'destructive' : 'default'} 
+                    disabled={isApplyingPromo}
+                    className={cn("w-28 shrink-0")}
+                >
+                    {isApplyingPromo ? (
+                        <Loader2 className={cn("w-4 h-4 animate-spin")} />
+                    ) : promoCode ? (
+                        "Remove"
+                    ) : (
+                        "Apply"
+                    )}
+                </Button>
+            </form>
+            {promoError && <p className={cn("text-xs text-red-500 mt-2")}>* {promoError}</p>}
+            {promoCode && !promoError && (
+                 <p className={cn("text-xs text-green-600 mt-2")}>✅ Applied: {promoCode}</p>
+            )}
+          </div>
+          
+
+          <div className={cn("space-y-2 border-y border-border py-4")}>
+            
+            <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
+            
+            {/* NEW: Discount Row */}
+            {discountAmount > 0 && (
+                <SummaryRow label={`Discount (${promoCode || 'Applied'})`} value={`-${formatCurrency(discountAmount)}`} isPlaceholder />
+            )}
+            
+            {/* REMOVED TAX ROW */}
+            
+            {/* FIX: Shipping is 0 */}
+            <SummaryRow label="Shipping" value={`FREE`} isPlaceholder /> 
           </div>
 
-          <SummaryRow label="Order Total" value={`PKR ${finalOrderTotal.toLocaleString()}`} isTotal />
-          <p className={cn("text-xs text-muted-foreground pt-2")}>Shipping cost of PKR {SHIPPING_COST} is added to the final total.</p>
+          <SummaryRow label="Order Total" value={formatCurrency(finalOrderTotal)} isTotal />
+          <p className={cn("text-xs text-muted-foreground pt-2")}>
+            Shipping is FREE. {discountAmount > 0 && `Your discount of ${formatCurrency(discountAmount)} has been applied.`}
+          </p>
         </div>
       </div>
     </main>

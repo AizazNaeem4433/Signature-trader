@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, PlusCircle, Trash2, Image as ImageIcon, MinusCircle, Upload, Save, Star } from 'lucide-react'; 
+import { Loader2, PlusCircle, Trash2, Image as ImageIcon, MinusCircle, Upload, Save, Star, List } from 'lucide-react'; 
 import { useNotificationStore } from '@/lib/store/useNotificationStore';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
@@ -19,8 +19,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 
-
-// --- DATA INTERFACES ---
+// --- DATA INTERFACES (UNCHANGED) ---
 interface Category { id: string; name: string; }
 interface ProductMedia { id: number; url: string; alt: string; type: 'image' | 'video'; } 
 interface VariantOption { id: number; value: string; priceAdjustment: number; linkedMediaId: number | null; }
@@ -36,7 +35,7 @@ interface ProductFormState {
     category_id: string;
     stock: number;
     isActive: boolean;
-    isFeatured: boolean; // <-- NEW: Featured product flag
+    isFeatured: boolean; // <-- NAYA: Featured product flag
     variantTypes: VariantType[];
     media: ProductMedia[];
 }
@@ -45,7 +44,7 @@ const initialProductState: ProductFormState = {
     name: '', shortDescription: '', detailedDescription: '', slug: '', basePrice: 0, cutPrice: 0, category_id: '',
     stock: 1, 
     isActive: true, 
-    isFeatured: false, // <-- NEW: Default value
+    isFeatured: false, // <-- NAYA: Default value
     variantTypes: [], 
     media: [],
 };
@@ -58,11 +57,114 @@ interface ProductFormProps {
 }
 
 
+// --- Component 1: Rich Text Controls (TS FIX APPLIED) ---
+function RichTextControls({ textareaRef, setFormData, formData }: { 
+    textareaRef: React.RefObject<HTMLTextAreaElement | null>; // <--- TS FIX: Changed type to allow null
+    setFormData: React.Dispatch<React.SetStateAction<ProductFormState>>; 
+    formData: ProductFormState;
+}) {
+    // Helper function to insert tags/text at the current selection/cursor
+    const applyFormat = (openTag: string, closeTag: string, placeholder: string) => {
+        const textarea = textareaRef.current;
+        if (!textarea) return; 
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        let currentValue = formData.detailedDescription;
+        let selectedText = currentValue.substring(start, end);
+        const placeholderUsed = selectedText.length === 0;
+
+        if (placeholderUsed) {
+            selectedText = placeholder;
+        }
+
+        const newText = currentValue.substring(0, start) + 
+                        openTag + 
+                        selectedText + 
+                        closeTag + 
+                        currentValue.substring(end);
+
+        setFormData(prev => ({ ...prev, detailedDescription: newText }));
+
+        // Cursor position ko adjust karein
+        setTimeout(() => {
+            if (textarea) {
+                if (placeholderUsed) {
+                     // Agar placeholder istemaal hua hai, to usko select karein
+                     textarea.selectionStart = start + openTag.length;
+                     textarea.selectionEnd = start + openTag.length + placeholder.length;
+                } else {
+                     // Agar existing text wrap hua hai, to cursor ko end par le jayen
+                     const newEnd = start + openTag.length + selectedText.length + closeTag.length;
+                     textarea.selectionStart = newEnd;
+                     textarea.selectionEnd = newEnd;
+                }
+                textarea.focus();
+            }
+        }, 0);
+    };
+
+    const handleList = () => {
+        const textarea = textareaRef.current;
+        if (!textarea) return; 
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        let currentValue = formData.detailedDescription;
+        let selectedText = currentValue.substring(start, end).trim();
+        
+        let newText;
+        if (selectedText.length > 0) {
+            // Har line ko <li> tag mein wrap karein
+            const listItems = selectedText.split('\n').map(line => `  <li>${line.trim()}</li>`).join('\n');
+            newText = currentValue.substring(0, start) + 
+                      '\n<ul>\n' + listItems + '\n</ul>\n' + 
+                      currentValue.substring(end);
+        } else {
+            // Agar kuch select na ho to placeholder list add karein
+            newText = currentValue.substring(0, start) + 
+                      '\n<ul>\n  <li>Feature 1</li>\n  <li>Feature 2</li>\n</ul>\n' + 
+                      currentValue.substring(end);
+        }
+
+        setFormData(prev => ({ ...prev, detailedDescription: newText }));
+        setTimeout(() => textarea.focus(), 0); 
+    }
+
+
+    return (
+        <div className={cn("flex gap-2 p-2 border-b border-border bg-muted/50 rounded-t-lg")}>
+            <Button type="button" size="sm" variant="outline" 
+                onClick={() => applyFormat('<strong>', '</strong>', 'Bold Text')}
+                aria-label="Bold (Strong Tag)"
+            >
+                <b>B</b>
+            </Button>
+            <Button type="button" size="sm" variant="outline" 
+                onClick={() => applyFormat('<h3>', '</h3>', 'Section Heading')}
+                aria-label="Heading 3"
+            >
+                H3
+            </Button>
+            <Button type="button" size="sm" variant="outline" 
+                onClick={handleList}
+                aria-label="Unordered List"
+            >
+                <List className="w-4 h-4" />
+            </Button>
+        </div>
+    );
+}
+// --- Component 1: End ---
+
+
 export default function ProductForm({ productId, categories, productData, onSave }: ProductFormProps) {
     const [formData, setFormData] = useState<ProductFormState>(initialProductState);
     const [loading, setLoading] = useState(false);
     const { addNotification } = useNotificationStore();
     
+    // NAYA REF: Detailed Description Textarea ke liye
+    const richTextareaRef = useRef<HTMLTextAreaElement>(null); 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false); 
 
@@ -89,7 +191,7 @@ export default function ProductForm({ productId, categories, productData, onSave
     }, [formData.name, productId]);
 
 
-    // --- CLOUDINARY UPLOAD HANDLER ---
+    // --- CLOUDINARY UPLOAD HANDLER (UNCHANGED) ---
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -154,7 +256,7 @@ export default function ProductForm({ productId, categories, productData, onSave
         }
     };
     
-    // --- MEDIA/VARIANT HANDLERS ---
+    // --- MEDIA/VARIANT HANDLERS (UNCHANGED) ---
     const handleRemoveMedia = (id: number) => {
         setFormData(prev => ({
             ...prev,
@@ -224,7 +326,7 @@ export default function ProductForm({ productId, categories, productData, onSave
     };
 
 
-    // --- SUBMISSION ---
+    // --- SUBMISSION (UNCHANGED) ---
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -332,7 +434,7 @@ export default function ProductForm({ productId, categories, productData, onSave
                             value={formData.stock} onChange={(e) => setFormData({...formData, stock: parseInt(e.target.value) || 0})} />
                 </div>
 
-                {/* --- NEW: IS FEATURED --- */}
+                {/* --- NAYA: IS FEATURED --- */}
                 <div>
                     <Label htmlFor="isFeatured" className="flex items-center gap-1">
                         <Star className="w-4 h-4 text-yellow-500" /> Featured
@@ -353,7 +455,7 @@ export default function ProductForm({ productId, categories, productData, onSave
                 </div>
             </div>
 
-            {/* Descriptions */}
+            {/* Descriptions (Rich Text Area Modified) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <Label htmlFor="shortDescription">Short Description (Cart Tip) *</Label>
@@ -361,11 +463,34 @@ export default function ProductForm({ productId, categories, productData, onSave
                              value={formData.shortDescription} onChange={(e) => setFormData({...formData, shortDescription: e.target.value})} />
                     <p className="text-xs text-muted-foreground mt-1">150 characters max.</p>
                 </div>
+                
+                {/* --- MODIFIED: Detailed Description with Rich Text Controls --- */}
                 <div>
                     <Label htmlFor="detailedDescription">Detailed Description (Product Page)</Label>
-                    <Textarea id="detailedDescription" rows={5} placeholder="Full details, materials, care instructions, and conditions."
-                             value={formData.detailedDescription} onChange={(e) => setFormData({...formData, detailedDescription: e.target.value})} />
+                    
+                    <div className={cn("rounded-lg border border-border overflow-hidden focus-within:ring-ring/50 focus-within:ring-[3px] focus-within:border-ring dark:focus-within:border-ring")}>
+                        {/* 1. Controls Bar */}
+                        <RichTextControls 
+                            textareaRef={richTextareaRef} 
+                            setFormData={setFormData} 
+                            formData={formData} 
+                        />
+
+                        {/* 2. Textarea */}
+                        <Textarea 
+                            ref={richTextareaRef}
+                            id="detailedDescription" 
+                            rows={5} 
+                            placeholder="Full details, materials, care instructions, and conditions. Use the tools above for formatting."
+                            value={formData.detailedDescription} 
+                            onChange={(e) => setFormData({...formData, detailedDescription: e.target.value})} 
+                            className={cn("border-none rounded-t-none resize-y shadow-none")} // Remove redundant styling
+                        />
+                    </div>
+                    {/* HINT updated to point to the new controls */}
+                    <p className="text-xs text-muted-foreground mt-1">Use the formatting controls above to easily add bold text, headings, and lists to your product details.</p>
                 </div>
+                {/* --- MODIFIED: End --- */}
             </div>
 
 
@@ -416,7 +541,7 @@ export default function ProductForm({ productId, categories, productData, onSave
                                 </Button>
                             </div>
 
-                            {/* --- NEW: ALT TEXT INPUT --- */}
+                            {/* --- NAYA: ALT TEXT INPUT --- */}
                             <div className="p-2">
                                 <Label htmlFor={`alt-${mediaItem.id}`} className="text-xs text-muted-foreground">Alt Text (SEO)</Label>
                                 <Input 
@@ -433,7 +558,7 @@ export default function ProductForm({ productId, categories, productData, onSave
                 </div>
             </div>
 
-            {/* Product Variants Section */}
+            {/* Product Variants Section (Deletion button already updated) */}
             <div className={cn("border border-dashed border-border p-4 rounded-lg space-y-6")}>
                 <h4 className="text-xl font-medium flex items-center gap-2">Product Variants (Sizes, Colors, etc.)</h4>
                 
@@ -450,9 +575,11 @@ export default function ProductForm({ productId, categories, productData, onSave
                                     }))}
                                     className="font-semibold"
                                 />
+                                {/* --- UPDATED: Use Trash2 for consistency (User Request) --- */}
                                 <Button variant="destructive" size="icon-sm" type="button" onClick={() => handleRemoveVariantType(vt.id)} className='shrink-0'>
-                                    <MinusCircle className="w-4 h-4" />
+                                    <Trash2 className="w-4 h-4" />
                                 </Button>
+                                {/* --- UPDATED: END --- */}
                             </div>
 
                             <div className="space-y-4">
@@ -485,7 +612,14 @@ export default function ProductForm({ productId, categories, productData, onSave
                                             </SelectContent>
                                         </Select>
 
-                                        <Button variant="destructive" size="icon-sm" type="button" onClick={() => handleRemoveVariantOption(vt.id, opt.id)} className='shrink-0 self-start md:self-center'>
+                                        <Button 
+                                            variant="destructive" 
+                                            size="icon-sm" 
+                                            type="button" 
+                                            onClick={() => handleRemoveVariantOption(vt.id, opt.id)} 
+                                            className='shrink-0 self-start md:self-center'
+                                            aria-label="Remove option"
+                                        >
                                             <Trash2 className="w-4 h-4" />
                                         </Button>
                                     </div>
@@ -514,6 +648,6 @@ export default function ProductForm({ productId, categories, productData, onSave
                     "Create Product"
                 )}
             </Button>
-        </form>
+        </form> 
     );
 }

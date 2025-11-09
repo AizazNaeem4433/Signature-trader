@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Loader2 } from 'lucide-react' // <-- NAYA IMPORT
+import { useNotificationStore } from '@/lib/store/useNotificationStore' // <-- NAYA IMPORT
 
 export default function BulkOrderPage() {
   const [formData, setFormData] = useState({
@@ -25,6 +27,11 @@ export default function BulkOrderPage() {
     country: '',
     notes: '',
   })
+  
+  // --- NAYA STATE ---
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const { addNotification } = useNotificationStore();
+  // --- NAYA STATE END ---
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -32,12 +39,51 @@ export default function BulkOrderPage() {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
+  
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    console.log('Submitted Data:', formData)
-    alert('Form submitted successfully!')
-  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatus('loading');
+
+    try {
+        const response = await fetch('/api/send-bulk-email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ formData }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to send inquiry to server.');
+        }
+
+        setStatus('success');
+        addNotification("Bulk order inquiry sent successfully! We will contact you soon.", "success");
+        // Form ko reset karein
+        setFormData({
+            fullName: '',
+            companyName: '',
+            email: '',
+            phone: '',
+            category: '',
+            products: '',
+            quantity: '',
+            targetDate: '',
+            country: '',
+            notes: '',
+        });
+
+    } catch (error) {
+        console.error("Bulk order submission failed:", error);
+        setStatus('error');
+        addNotification("Submission failed. Please try again or email us directly.", "error");
+    }
+  };
 
   const categories = [
     'Cutlery',
@@ -144,9 +190,8 @@ export default function BulkOrderPage() {
               Product Category *
             </label>
             <Select
-              onValueChange={(value) =>
-                setFormData((prev) => ({ ...prev, category: value }))
-              }
+              onValueChange={(value) => handleSelectChange('category', value)}
+              value={formData.category} // <-- Controlled value
             >
               <SelectTrigger className="bg-background border-border">
                 <SelectValue placeholder="Select a category" />
@@ -215,9 +260,8 @@ export default function BulkOrderPage() {
               Shipping Country / Region *
             </label>
             <Select
-              onValueChange={(value) =>
-                setFormData((prev) => ({ ...prev, country: value }))
-              }
+              onValueChange={(value) => handleSelectChange('country', value)}
+              value={formData.country} // <-- Controlled value
             >
               <SelectTrigger className="bg-background border-border">
                 <SelectValue placeholder="Select destination" />
@@ -251,14 +295,26 @@ export default function BulkOrderPage() {
             />
           </div>
 
-          {/* Submit Button */}
-          <div className="md:col-span-2 flex justify-center">
+          {/* Submit Button & Status */}
+          <div className="md:col-span-2 flex flex-col items-center">
             <Button
               type="submit"
-              className="bg-[#FFCE00] hover:bg-[#e6b800] text-black font-semibold px-8 py-3 text-lg rounded-lg"
+              disabled={status === 'loading'}
+              className="bg-[#FFCE00] hover:bg-[#e6b800] text-black font-semibold px-8 py-3 text-lg rounded-lg w-full md:w-auto"
             >
-              Request Custom Quote
+              {status === 'loading' ? (
+                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Sending Request</>
+              ) : (
+                'Request Custom Quote'
+              )}
             </Button>
+            
+            {status === 'success' && (
+                <p className="text-green-500 font-medium pt-3">✅ Request sent! We'll contact you shortly.</p>
+            )}
+            {status === 'error' && (
+                <p className="text-red-500 font-medium pt-3">❌ Submission failed. Please try emailing sales.</p>
+            )}
           </div>
         </form>
       </div>

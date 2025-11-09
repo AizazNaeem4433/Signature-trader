@@ -52,7 +52,12 @@ export default function ToastNotification() {
           exit={{ y: 50, opacity: 0 }}
           transition={{ type: "spring", stiffness: 100, damping: 10 }}
           className={cn(
-            "fixed bottom-6 right-6 z-100 w-full max-w-sm overflow-hidden rounded-lg shadow-xl"
+            // --- NEW RESPONSIVE STYLES ---
+            "fixed bottom-6 z-100 w-full overflow-hidden rounded-lg shadow-xl",
+            "max-w-[calc(100%-2rem)]", // Take up most of the screen width on small viewports
+            "left-1/2 -translate-x-1/2", // Center horizontally
+            "sm:max-w-sm sm:right-6 sm:left-auto sm:translate-x-0" // Restore desktop position on small breakpoint
+            // --- END NEW STYLES ---
           )}
           onClick={clearNotification}
         >

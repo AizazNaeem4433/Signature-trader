@@ -1,21 +1,40 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
 
 // --- FIX: Component ka naam "ContactPage" se "ContactClient" kar dein ---
 export default function ContactClient() {
   const [form, setForm] = useState({ name: "", email: "", message: "" });
-  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle"); // Added 'loading'
+
+  // Helper for input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const { name, value } = e.target;
+      setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStatus("idle");
+    setStatus("loading"); // Set status to loading
 
     try {
-      console.log("Form submitted:", form);
+      const response = await fetch('/api/send-contact-email', { // <--- NEW API ENDPOINT
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(form), // Send the form state
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send inquiry to server.');
+      }
+
       setStatus("success");
       setForm({ name: "", email: "", message: "" });
+      
     } catch (error) {
       console.error(error);
       setStatus("error");
@@ -34,7 +53,7 @@ export default function ContactClient() {
       </motion.h1>
 
       <div className="grid lg:grid-cols-2 gap-12 items-start">
-        {/* LEFT SIDE — INFO */}
+        {/* LEFT SIDE — INFO (Omitted for brevity, assumed unchanged) */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -148,30 +167,36 @@ export default function ContactClient() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block mb-2 font-medium">Full Name</label>
+              <label htmlFor="name" className="block mb-2 font-medium">Full Name</label>
               <input
+                id="name"
+                name="name" // Added name attribute
                 type="text"
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onChange={handleInputChange} // Used common handler
                 required
                 className="w-full px-4 py-3 rounded-lg bg-background border border-border focus:outline-none focus:ring-2 focus:ring-[#FFCE00]"
               />
             </div>
             <div>
-              <label className="block mb-2 font-medium">Email Address</label>
+              <label htmlFor="email" className="block mb-2 font-medium">Email Address</label>
               <input
+                id="email"
+                name="email" // Added name attribute
                 type="email"
                 value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                onChange={handleInputChange} // Used common handler
                 required
                 className="w-full px-4 py-3 rounded-lg bg-background border border-border focus:outline-none focus:ring-2 focus:ring-[#FFCE00]"
               />
             </div>
             <div>
-              <label className="block mb-2 font-medium">Message</label>
+              <label htmlFor="message" className="block mb-2 font-medium">Message</label>
               <textarea
+                id="message"
+                name="message" // Added name attribute
                 value={form.message}
-                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                onChange={handleInputChange as any} // Used common handler (cast for textarea)
                 required
                 rows={5}
                 className="w-full px-4 py-3 rounded-lg bg-background border border-border focus:outline-none focus:ring-2 focus:ring-[#FFCE00]"
@@ -180,9 +205,16 @@ export default function ContactClient() {
 
             <button
               type="submit"
+              disabled={status === "loading"} // Disable during loading
               className="bg-[#FFCE00] text-black px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-all w-full"
             >
-              Send Message
+              {status === "loading" ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
+                </>
+              ) : (
+                "Send Message"
+              )}
             </button>
 
             {status === "success" && (

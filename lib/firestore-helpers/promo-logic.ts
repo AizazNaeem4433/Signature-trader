@@ -1,3 +1,4 @@
+// signature-trader/lib/firestore-helpers/promo-logic.ts
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, QueryDocumentSnapshot } from 'firebase/firestore';
 

@@ -23,6 +23,10 @@ interface CartState {
     
     isCartOpen: boolean; 
     
+    // --- NAYA PROMO CODE STATE ---
+    promoCode: string | null;
+    discountAmount: number;
+
     // Actions
     addItem: (item: Omit<CartItem, 'totalPrice'>) => void;
     removeItem: (productId: string, variantsKey: string) => void;
@@ -33,6 +37,9 @@ interface CartState {
     closeCart: () => void;
     
     _calculateTotals: (items: CartItem[]) => void;
+    // --- NAYA ACTION ---
+    applyPromoCode: (code: string | null, discount: number) => void;
+    removePromoCode: () => void;
 }
 
 // Helper to create a unique identifier for item + variant combination
@@ -50,22 +57,28 @@ export const useCartStore = create<CartState>()(
         (set, get) => ({
             items: [],
             subtotal: 0,
-            taxRate: 0, // <-- FIX: Set default tax rate to 0
+            taxRate: 0, // <--- FIX: Tax Rate is set to 0
             total: 0,
             isCartOpen: false, 
+            
+            // --- NAYA STATE ---
+            promoCode: null,
+            discountAmount: 0,
 
             openCart: () => set({ isCartOpen: true }),
             closeCart: () => set({ isCartOpen: false }),
 
             _calculateTotals: (items) => {
                 const subtotal = items.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
+                const { taxRate, discountAmount } = get();
+
+                // Tax will be 0: subtotal * 0
+                const tax = subtotal * taxRate; 
                 
-                // NOTE: Tax calculation is still here but will equal 0 with taxRate=0
-                const tax = subtotal * get().taxRate; 
-                
-                // FIX: Total now includes tax (which is currently 0)
-                const total = subtotal + tax; 
-                
+                // Total = Subtotal + Tax (0) - Discount
+                let total = subtotal + tax - discountAmount;
+                if (total < 0) total = 0; 
+
                 set({ subtotal, total });
             },
 
@@ -119,8 +132,28 @@ export const useCartStore = create<CartState>()(
                 _calculateTotals(newItems);
             },
 
+            // --- NAYE ACTIONS ---
+            applyPromoCode: (code, discount) => {
+                const { _calculateTotals, items } = get();
+                set({ promoCode: code, discountAmount: discount });
+                _calculateTotals(items); // Recalculate total with new discount
+            },
+            
+            removePromoCode: () => {
+                 const { _calculateTotals, items } = get();
+                 set({ promoCode: null, discountAmount: 0 });
+                 _calculateTotals(items); // Recalculate total without discount
+            },
+
             clearCart: () => {
-                set({ items: [], subtotal: 0, total: 0 });
+                set({ 
+                    items: [], 
+                    subtotal: 0, 
+                    total: 0, 
+                    // --- NAYA STATE RESET ---
+                    promoCode: null,
+                    discountAmount: 0,
+                });
             }
         }),
         {
@@ -131,6 +164,9 @@ export const useCartStore = create<CartState>()(
                 subtotal: state.subtotal,
                 total: state.total,
                 taxRate: state.taxRate,
+                // --- NAYA STATE PERSISTENCE ---
+                promoCode: state.promoCode,
+                discountAmount: state.discountAmount,
             }),
         }
     )

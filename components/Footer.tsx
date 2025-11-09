@@ -34,7 +34,7 @@ export default function Footer() {
           <ul className="space-y-3 text-sm">
             <li>
               <a
-                href="tel:+923001234567"
+                href="tel:+923075221171" // Updated phone number
                 className="flex items-center gap-2 hover:text-[#FFCE00] transition-colors"
                 aria-label="Call us"
               >
@@ -43,7 +43,7 @@ export default function Footer() {
             </li>
             <li>
               <a
-                href="mailto:info.signaturetrader@gmail.com"
+                href="mailto:signaturetrader6@gmail.com"
                 className="flex items-center gap-2 hover:text-[#FFCE00] transition-colors"
                 aria-label="Email us"
               >
@@ -64,7 +64,7 @@ export default function Footer() {
           </ul>
         </motion.div>
 
-        {/* SHOP (delay 0.15) */}
+        {/* SHOP (Updated Category Routes) */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -79,17 +79,17 @@ export default function Footer() {
               </Link>
             </li>
             <li>
-              <Link href="/category/home-decor" className="hover:text-[#FFCE00] transition-colors">
+              <Link href="/products/category/home-decor" className="hover:text-[#FFCE00] transition-colors">
                 Home Décor
               </Link>
             </li>
             <li>
-              <Link href="/category/shoes" className="hover:text-[#FFCE00] transition-colors">
+              <Link href="/products/category/shoes" className="hover:text-[#FFCE00] transition-colors">
                 Shoes
               </Link>
             </li>
             <li>
-              <Link href="/category/cutlery" className="hover:text-[#FFCE00] transition-colors">
+              <Link href="/products/category/cutlery" className="hover:text-[#FFCE00] transition-colors">
                 Cutlery
               </Link>
             </li>
@@ -128,7 +128,7 @@ export default function Footer() {
           </ul>
         </motion.div>
 
-        {/* FOLLOW US (delay 0.45) */}
+        {/* FOLLOW US (Updated Social Links) */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -138,10 +138,20 @@ export default function Footer() {
           <h3 className="text-lg font-semibold text-[#FFCE00] mb-4">Follow Us</h3>
           <div className="flex gap-5 text-gray-500 dark:text-gray-400">
             {[
-              { Icon: Instagram, href: "https://instagram.com" },
-              { Icon: Facebook, href: "https://facebook.com" },
-              { Icon: Twitter, href: "https://twitter.com" },
-            ].map(({ Icon, href }, i) => (
+              { 
+                Icon: Instagram, 
+                // Link from contact-client.tsx
+                href: "https://www.instagram.com/signatu_cutlery_crockery_store/?utm_source=qr&igsh=MTljYXZ3aGh2Mm05cQ%3D%3D#",
+                label: "Instagram"
+              },
+              { 
+                Icon: Facebook, 
+                // Link from contact-client.tsx
+                href: "https://www.facebook.com/Signature.Traders.2026?rdid=iqqnhUyFt42wPuhZ&share_url=https%3A%2F%2Fwww.facebook.com%2Fshare%2F16XR4UjW4C%2F#",
+                label: "Facebook"
+              },
+              { Icon: Twitter, href: "https://twitter.com", label: "Twitter (Placeholder)" },
+            ].map(({ Icon, href, label }, i) => (
               <motion.div
                 key={i}
                 whileHover={{ y: -4, scale: 1.06 }}
@@ -152,7 +162,7 @@ export default function Footer() {
                   target="_blank"
                   rel="noreferrer"
                   className="hover:text-[#FFCE00] transition-colors"
-                  aria-label={`Open ${href}`}
+                  aria-label={`Open ${label}`}
                 >
                   <Icon />
                 </a>

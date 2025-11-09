@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 // Lucide Icons
-import { ShoppingBag, Loader2, Download, User, Phone, MapPin } from 'lucide-react';
+import { ShoppingBag, Loader2, Download, User, Phone, MapPin, Mail } from 'lucide-react'; // Mail icon added
 // Firestore
 import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
@@ -17,19 +17,22 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 
-// FIX: Updated Interface to include all shipping details saved during checkout
+// FIX: Updated Interface to include all required fields for slip generation
 interface Order {
     id: string;
     user_name: string;
-    shipping_phone: string; // <-- NEW
-    shipping_address: string; // <-- NEW
+    user_email: string; // <-- ADDED: Customer Email
+    shipping_phone: string; 
+    shipping_address: string; 
     total_amount: number;
-    subtotal: number; // For detailed summary
-    tax_amount: number; // For detailed summary
-    shipping_cost: number; // For detailed summary
+    subtotal: number; 
+    tax_amount: number; 
+    shipping_cost: number; 
     status: 'pending' | 'shipped' | 'delivered' | 'cancelled';
     created_at: string; // ISO Date string
     items: Array<{ name: string; quantity: number; price: number }>;
+    promo_code?: string; // <-- ADDED: Promo Code
+    discount_amount?: number; // <-- ADDED: Discount Amount
 }
 
 export default function AdminOrdersListPage() {
@@ -71,7 +74,7 @@ export default function AdminOrdersListPage() {
         }
     };
 
-    // --- Generate Order Slip PDF (FIXED LOGIC) ---
+    // --- Generate Order Slip PDF (UPDATED LOGIC) ---
     const generateOrderSlip = (order: Order) => {
         const doc = new jsPDF();
         let y = 10;
@@ -91,6 +94,7 @@ export default function AdminOrdersListPage() {
         doc.setFontSize(12);
 
         doc.text(`Name: ${order.user_name}`, margin, y); y += 6;
+        doc.text(`Email: ${order.user_email}`, margin, y); y += 6; // <-- ADDED CUSTOMER EMAIL
         doc.text(`Phone: ${order.shipping_phone}`, margin, y); y += 6;
         doc.text(`Address: ${order.shipping_address}`, margin, y); y += 10;
 
@@ -99,7 +103,7 @@ export default function AdminOrdersListPage() {
         doc.setFont('helvetica', 'bold');
         doc.text("Qty", margin, y);
         doc.text("Item Name", 30, y);
-        doc.text("Price", 180, y, { align: 'right' });
+        doc.text("Unit Price", 180, y, { align: 'right' }); // Renamed "Price" to "Unit Price"
         y += 6;
         doc.setFont('helvetica', 'normal');
         doc.line(margin, y, 190, y); // Draw a line
@@ -107,12 +111,15 @@ export default function AdminOrdersListPage() {
 
         // Items List
         order.items.forEach((item, index) => {
-            const itemTotal = item.price * item.quantity;
             doc.text(String(item.quantity), margin, y);
+            
             // Handle long item names
             const itemText = doc.splitTextToSize(item.name, 140); 
             doc.text(itemText, 30, y);
-            doc.text(`PKR ${item.price.toLocaleString()} (@ ${item.quantity})`, 180, y, { align: 'right' });
+            
+            // FIX: Removed (@ ${item.quantity}) from price, showing unit price only
+            doc.text(`PKR ${item.price.toLocaleString()}`, 180, y, { align: 'right' }); 
+            
             y += (itemText.length * 5) + 1; // Adjust Y based on lines used
         });
 
@@ -122,9 +129,28 @@ export default function AdminOrdersListPage() {
         
         // Financial Summary
         doc.setFontSize(10);
-        doc.text(`Subtotal:`, 140, y, { align: 'right' }); doc.text(`PKR ${order.subtotal.toLocaleString()}`, 180, y, { align: 'right' }); y += 5;
-        doc.text(`Tax:`, 140, y, { align: 'right' }); doc.text(`PKR ${order.tax_amount.toLocaleString()}`, 180, y, { align: 'right' }); y += 5;
-        doc.text(`Shipping:`, 140, y, { align: 'right' }); doc.text(`PKR ${order.shipping_cost.toLocaleString()}`, 180, y, { align: 'right' }); y += 7;
+        
+        // Subtotal
+        doc.text(`Subtotal:`, 140, y, { align: 'right' }); 
+        doc.text(`PKR ${order.subtotal.toLocaleString()}`, 180, y, { align: 'right' }); y += 5;
+
+        // ADDED: Discount
+        if (order.discount_amount && order.discount_amount > 0) {
+            const promoText = order.promo_code ? `Discount (${order.promo_code})` : 'Discount';
+            doc.text(promoText, 140, y, { align: 'right' }); 
+            doc.text(`-PKR ${order.discount_amount.toLocaleString()}`, 180, y, { align: 'right' }); y += 5;
+        }
+
+        // Tax (Only show if tax amount is greater than 0, ensuring no zero tax row)
+        if (order.tax_amount > 0) {
+            doc.text(`Tax:`, 140, y, { align: 'right' }); 
+            doc.text(`PKR ${order.tax_amount.toLocaleString()}`, 180, y, { align: 'right' }); y += 5;
+        }
+
+        // Shipping (Show FREE if cost is 0)
+        const shippingText = order.shipping_cost > 0 ? `PKR ${order.shipping_cost.toLocaleString()}` : 'FREE';
+        doc.text(`Shipping:`, 140, y, { align: 'right' }); 
+        doc.text(shippingText, 180, y, { align: 'right' }); y += 7;
 
         doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
@@ -210,10 +236,13 @@ export default function AdminOrdersListPage() {
                                         <span className="text-muted-foreground">{formatDate(order.created_at)}</span>
                                     </p>
                                     <p className="flex items-center gap-2 text-muted-foreground">
+                                        <Mail className="w-4 h-4 text-red-500" /> {order.user_email}
+                                    </p>
+                                    <p className="flex items-center gap-2 text-muted-foreground">
                                         <Phone className="w-4 h-4 text-green-500" /> {order.shipping_phone}
                                     </p>
                                     <p className="flex items-center gap-2 text-muted-foreground leading-tight">
-                                        <MapPin className="w-4 h-4 text-purple-500 flex-shrink-0" /> {order.shipping_address}
+                                        <MapPin className="w-4 h-4 text-purple-500 shrink-0" /> {order.shipping_address}
                                     </p>
                                 </div>
 
@@ -273,7 +302,7 @@ export default function AdminOrdersListPage() {
                                                 {order.user_name}
                                             </div>
                                             <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                                {order.shipping_address}
+                                                <Mail className='w-3 h-3 inline-block mr-1'/> {order.user_email}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">PKR {order.total_amount.toLocaleString()}</td>

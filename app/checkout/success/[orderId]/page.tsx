@@ -27,6 +27,9 @@ interface ConfirmationOrder {
     shipping_cost: number;
     status: 'pending' | 'shipped' | 'delivered' | 'cancelled';
     items: Array<{ name: string; quantity: number; price: number }>;
+    // NEW: Add discount fields from checkout logic
+    promo_code?: string; 
+    discount_amount?: number;
 }
 
 // Helper Component
@@ -55,12 +58,9 @@ export default function OrderConfirmationPage() {
             return;
         }
         
-        // === FIX APPLIED HERE ===
-        // Stop execution if orderId is missing or user UID is not yet available
         if (!orderId || !user?.uid) { 
-             // If we're logged in but UID is temporarily unavailable, wait, don't set loading=false yet
              if (isLoggedIn && isInitialized) { 
-                setLoading(true); // Keep loading until UID is confirmed
+                setLoading(true); 
              } else {
                  setLoading(false); 
              }
@@ -75,27 +75,24 @@ export default function OrderConfirmationPage() {
                 if (orderSnap.exists()) {
                     const orderData = { id: orderSnap.id, ...orderSnap.data() } as ConfirmationOrder;
                     
-                    // Validation: Check if the order belongs to the logged-in user
-                    if (orderData.user_id === user.uid) { // Use user.uid here since it's checked above
+                    if (orderData.user_id === user.uid) { 
                         setOrder(orderData);
                         
-                        // Clear the cart immediately upon successful order details fetch
                         if (!isCartCleared) {
                             clearCart(); 
                             setIsCartCleared(true);
                         }
-                        setLoading(false); // Success! Stop loading.
+                        setLoading(false); 
                         
                     } else {
-                        // Unauthorized access detected
                         setOrder(null); 
-                        setLoading(false); // Stop loading, render error message
+                        setLoading(false); 
                     }
                 } else if (retries > 0) {
                     setTimeout(() => fetchOrderWithRetry(retries - 1, delay * 2), delay);
                 } else {
                     setOrder(null);
-                    setLoading(false); // Stop loading, render error message
+                    setLoading(false); 
                 }
             } catch (error) {
                 console.error("Error fetching order:", error);
@@ -103,7 +100,7 @@ export default function OrderConfirmationPage() {
                     setTimeout(() => fetchOrderWithRetry(retries - 1, delay * 2), delay);
                 } else {
                     setOrder(null);
-                    setLoading(false); // Stop loading on final retry failure
+                    setLoading(false); 
                 }
             }
         };
@@ -112,7 +109,6 @@ export default function OrderConfirmationPage() {
 
     }, [orderId, isInitialized, isLoggedIn, user, isCartCleared, clearCart]); 
 
-    // The loading condition is now more robust.
     if (!isInitialized || loading) {
         return (
             <div className={cn("min-h-screen flex items-center justify-center")}>
@@ -132,10 +128,17 @@ export default function OrderConfirmationPage() {
         );
     }
     
-    // Calculate display values
-    const subtotalDisplay = `PKR ${order.subtotal.toLocaleString()}`;
-    const shippingDisplay = `PKR ${order.shipping_cost.toLocaleString()}`;
-    const totalDisplay = `PKR ${order.total_amount.toLocaleString()}`;
+    // --- FIX: Currency format is PKR, Tax is hidden, Shipping is FREE ---
+    const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString('en-PK', { minimumFractionDigits: 0 })}`;
+    
+    const subtotalDisplay = formatCurrency(order.subtotal);
+    // Shipping cost will be FREE if 0
+    const shippingDisplay = order.shipping_cost === 0 ? "FREE" : formatCurrency(order.shipping_cost); 
+    const totalDisplay = formatCurrency(order.total_amount);
+    
+    // NEW: Discount amount check
+    const discountAmount = order.discount_amount || 0;
+    const promoCode = order.promo_code;
 
     return (
         <main className={cn("min-h-screen flex items-center justify-center bg-background py-16 px-4")}>
@@ -164,7 +167,8 @@ export default function OrderConfirmationPage() {
                     
                     <div className={cn("grid grid-cols-2 gap-4 border-b border-border pb-3 text-sm")}>
                         <SummaryItem Icon={Clock} label="Status" value={order.status.toUpperCase()} valueClass="text-yellow-600 font-semibold" />
-                        <SummaryItem Icon={DollarSign} label="Total (COD)" value={totalDisplay} valueClass="font-extrabold text-red-600" />
+                        {/* FIX: Ensure label uses PKR */}
+                        <SummaryItem Icon={DollarSign} label="Total (PKR, COD)" value={totalDisplay} valueClass="font-extrabold text-red-600" /> 
                         <SummaryItem Icon={User} label="Recipient" value={order.user_name} />
                         <SummaryItem Icon={Phone} label="Contact" value={order.shipping_phone} />
                     </div>
@@ -172,8 +176,23 @@ export default function OrderConfirmationPage() {
                     {/* Financial Breakdown */}
                     <div className={cn("space-y-2 border-b border-border pb-3")}>
                         <SummaryItem Icon={DollarSign} label="Subtotal" value={subtotalDisplay} />
-                        <SummaryItem Icon={Package} label="Shipping Cost" value={shippingDisplay} />
-                        {order.tax_amount > 0 && <SummaryItem Icon={DollarSign} label={`Tax (${(order.tax_amount / order.subtotal) * 100}%)`} value={`PKR ${order.tax_amount.toLocaleString()}`} />}
+                        
+                        {/* NEW: Discount Row */}
+                        {discountAmount > 0 && (
+                            <SummaryItem Icon={DollarSign} label={`Discount (${promoCode || 'Applied'})`} value={`-${formatCurrency(discountAmount)}`} valueClass="text-green-600" />
+                        )}
+                        
+                        <SummaryItem 
+                            Icon={Package} 
+                            label="Shipping Cost" 
+                            value={shippingDisplay} 
+                            valueClass={order.shipping_cost === 0 ? "text-green-600" : undefined}
+                        />
+                        
+                        {/* --- FIX: Tax amount 0 hone ki wajah se hide hoga (Original tax row removed) --- */}
+                        {order.tax_amount > 0 && 
+                            <SummaryItem Icon={DollarSign} label={`Tax (${(order.tax_amount / order.subtotal) * 100}%)`} value={formatCurrency(order.tax_amount)} />
+                        }
                     </div>
 
 
@@ -189,7 +208,7 @@ export default function OrderConfirmationPage() {
                         {order.items.map((item, index) => (
                             <div key={index} className={cn("flex justify-between text-sm text-muted-foreground")}>
                                 <span>{item.quantity}x {item.name}</span>
-                                <span>PKR {item.price.toLocaleString()}</span>
+                                <span>{formatCurrency(item.price)}</span>
                             </div>
                         ))}
                     </div>
